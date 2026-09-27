@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LocalSend CLI — warning variant for the auto-accept receive entry.
+     Same generic send glyph as localsend-cli.svg, on a red/amber field with an
+     alert mark, so the risky launcher is visually distinct in the menu. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bgw" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f0a020"/>
+      <stop offset="100%" stop-color="#b3261e"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="26" fill="url(#bgw)"/>
+  <!-- tray / device -->
+  <path d="M32 76 h18 a14 14 0 0 0 28 0 h18 v18 a8 8 0 0 1 -8 8 h-48 a8 8 0 0 1 -8 -8 z"
+        fill="#ffffff" fill-opacity="0.92"/>
+  <!-- arrow up (sending) -->
+  <path d="M64 22 l16 18 h-10 v18 h-12 v-18 h-10 z" fill="#ffffff"/>
+  <!-- alert badge -->
+  <circle cx="96" cy="36" r="18" fill="#ffffff" stroke="#b3261e" stroke-width="4"/>
+  <rect x="93" y="25" width="6" height="14" rx="3" fill="#b3261e"/>
+  <circle cx="96" cy="44" r="3.6" fill="#b3261e"/>
+</svg>

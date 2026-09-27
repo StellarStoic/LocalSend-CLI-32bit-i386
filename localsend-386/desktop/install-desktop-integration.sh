@@ -1,15 +1,17 @@
 #!/bin/bash
 # install-desktop-integration.sh — run as root ON the target.
-# Installs the binary system-wide, adds menu entries, and validates them.
+# Installs the binary system-wide, adds three menu entries (dashboard, plain receive,
+# and the danger-gated auto-accept receive), and validates everything.
 #
 #   sudo bash install-desktop-integration.sh /path/to/localsend-cli-386
 #
-# Idempotent: re-running replaces the binary and the launchers in place.
+# Idempotent: re-running replaces the binary, wrappers and launchers in place.
 set -euo pipefail
 
 BIN_SRC="${1:-/tmp/localsend-cli-386}"
 APP_DIR=/usr/local/share/localsend-cli
 BIN=/usr/local/bin/localsend-cli
+MODE=/usr/local/bin/localsend-cli-mode
 ICON_DIR=/usr/share/icons/hicolor/scalable/apps
 APPS_DIR=/usr/share/applications
 
@@ -22,15 +24,27 @@ file "$BIN" | cut -c1-100
 sha256sum "$BIN"
 
 echo
-echo "== icon (scalable SVG, so it stays sharp at panel size)"
-install -d "$ICON_DIR"
-install -m 0644 "$HERE/localsend-cli.svg" "$ICON_DIR/localsend-cli.svg"
-# also drop a copy next to the app for reference
+echo "== wrappers (one script, mode chosen by the name it is called by)"
+install -m 0755 "$HERE/localsend-mode.sh" "$MODE"
+ln -sf "$MODE" /usr/local/bin/localsend-cli-receive
+ln -sf "$MODE" /usr/local/bin/localsend-cli-quicksave
+echo "   $MODE  (+ symlinks localsend-cli-receive, localsend-cli-quicksave)"
 install -d "$APP_DIR"
-install -m 0644 "$HERE/localsend-cli.svg" "$APP_DIR/localsend-cli.svg"
+install -m 0755 "$HERE/localsend-mode.sh" "$APP_DIR/localsend-mode.sh"
+install -m 0755 "$HERE/set-device-name.sh" "$APP_DIR/set-device-name.sh"
 
+echo
+echo "== icons (scalable SVG, stay sharp at panel size)"
+install -d "$ICON_DIR"
+for i in localsend-cli.svg localsend-cli-warning.svg; do
+    install -m 0644 "$HERE/$i" "$ICON_DIR/$i"
+    install -m 0644 "$HERE/$i" "$APP_DIR/$i"
+    echo "   $ICON_DIR/$i"
+done
+
+echo
 echo "== menu entries"
-for f in localsend-cli.desktop localsend-cli-receive.desktop; do
+for f in localsend-cli.desktop localsend-cli-receive.desktop localsend-cli-quicksave.desktop; do
     install -m 0644 "$HERE/$f" "$APPS_DIR/$f"
     if desktop-file-validate "$APPS_DIR/$f"; then
         echo "   $f: valid"
@@ -45,14 +59,20 @@ command -v update-desktop-database >/dev/null && update-desktop-database "$APPS_
 command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null | tail -1 || true
 
 echo
-echo "== check the launcher actually resolves"
-command -v localsend-cli && localsend-cli --version
+echo "== check the launchers resolve"
+ls -l "$BIN" /usr/local/bin/localsend-cli-receive /usr/local/bin/localsend-cli-quicksave 2>&1 | sed 's/^/   /'
+"$BIN" --version | sed 's/^/   /'
 
 echo
 echo "== menu entries now visible to the session =="
 grep -h -E "^(Name|Exec|Terminal|Categories)=" "$APPS_DIR"/localsend-cli*.desktop | sed 's/^/   /'
 
 echo
-echo "Done. The entries appear under Applications → Network (or search \"LocalSend\";"
-echo "the XFCE Whisker menu finds it by name or keywords). If your panel shows a menu"
-echo "cache, log out and back in once, or run: xfce4-panel -r"
+echo "Done. Entries appear under Applications → Network (search \"LocalSend\"; the XFCE"
+echo "Whisker menu matches names and keywords). If your menu looks cached, log out and"
+echo "back in once, or run: xfce4-panel -r"
+echo
+echo "Only ONE LocalSend can run at a time (they all want port 53317). The wrapper for"
+echo "the receive entries checks for that first and explains the clash instead of"
+echo "failing with a bind error. The auto-accept entry additionally demands you type"
+echo "the word 'danger' before it starts."

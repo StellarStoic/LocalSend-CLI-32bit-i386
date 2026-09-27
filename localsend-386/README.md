@@ -38,12 +38,13 @@ ssh target 'localsend-cli --help'
 
 ## Desktop menu entry (so it's not a terminal-only tool)
 
-`desktop/` holds a launcher, an icon and an installer — because a CLI that lives in
+`desktop/` holds the launchers, icons and an installer — because a CLI that lives in
 `/usr/local/bin` is invisible to someone who works from the application menu:
 
 ```bash
 scp -r desktop target:/tmp/
 ssh target 'sudo bash /tmp/desktop/install-desktop-integration.sh /tmp/localsend-cli-386'
+bash desktop/set-device-name.sh "IdeaPad"      # optional: stable name (no sudo needed)
 ```
 
 That installs:
@@ -51,24 +52,69 @@ That installs:
 | path | what |
 |---|---|
 | `/usr/local/bin/localsend-cli` | the binary |
-| `/usr/share/applications/localsend-cli.desktop` | menu entry **LocalSend** → opens the TUI dashboard in a terminal |
-| `/usr/share/applications/localsend-cli-receive.desktop` | menu entry **LocalSend (receive)** → `localsend-cli receive`, approving each sender |
-| `/usr/share/icons/hicolor/scalable/apps/localsend-cli.svg` | scalable icon (a generic send glyph, deliberately *not* the upstream logo) |
+| `/usr/local/bin/localsend-cli-mode` (+ `-receive`, `-quicksave` symlinks) | one wrapper; the mode follows the name it's called by |
+| `/usr/share/applications/localsend-cli.desktop` | **LocalSend** → opens the TUI dashboard in a terminal |
+| `/usr/share/applications/localsend-cli-receive.desktop` | **LocalSend (receive)** → approves each sender |
+| `/usr/share/applications/localsend-cli-quicksave.desktop` | **LocalSend (receive, auto-accept — DANGER)** → behind the danger gate |
+| `/usr/share/icons/hicolor/scalable/apps/localsend-cli{,-warning}.svg` | scalable icons (generic send glyph — deliberately *not* the upstream logo) |
 
-Both entries use `Terminal=true`, so the desktop opens them in whatever terminal emulator is
-configured — no terminal-specific flags, works on XFCE/qterminal, GNOME, or anything else.
-`desktop-file-validate` passes with no hints; `update-desktop-database` is run for you.
+All entries use `Terminal=true`, so the desktop opens them in whatever terminal emulator is
+configured — no terminal-specific flags. `desktop-file-validate` passes with no hints, and
+`update-desktop-database` is run for you.
+
+### The danger gate, and why it exists in this shape
+
+`--quick-save` accepts *every* incoming transfer from *any* device on the network without asking.
+That is a legitimate thing to want (a fixed target on a trusted home LAN) and a terrible default,
+so it is exposed as a third menu entry rather than hidden or silently enabled:
+
+* a red block-capital warning that says, in plain words, what will be written where, that there is
+  no authentication beyond being on the same LAN, that received files are untrusted input, and
+  that it cannot warn you about a filling disk;
+* the safer alternative is spelled out inline: plain receive + "accept and pair" once per device;
+* it requires **typing the word `danger`** — Enter alone does nothing;
+* it refuses to run without a TTY, so a script cannot pipe its way past the gate;
+* it is not persisted: closing the window ends it, the next launch is safe again.
+
+### Pre-flight: never fail with a raw bind error
+
+Only one LocalSend can hold a port, so starting a second instance used to die with
+`listen tcp :53317: bind: address already in use` — *after* printing a success banner. The wrapper
+now checks the port you're actually going to use (`--port=N` is honoured, so a second instance on
+another port still works) and explains the conflict instead, including which pid holds it.
+
+### Stable device name
+
+Left unset, the CLI generates a new random adjective+noun **every run**, so the machine shows up as
+"Silent Shark", then "Happy Owl", and is impossible to recognise in another device's list.
+`set-device-name.sh` pins it in `~/.config/localsend-cli/config.yaml` (backing the file up first).
+
 
 ## A note on the binary in this repo's releases
 
-The released binary is built from upstream `v1.3.2` **plus** `patches/0001-richer-help-and-version-flag.patch`:
+The released binary is built from upstream `v1.3.2` **plus**
+`patches/0001-help-version-and-arg-order.patch`:
 
 * `--help` now lists every command with usage notes, environment variables, config file locations
   and a dozen worked examples (upstream's help was a bare command list).
-* `--version` / `-V` / `version` exist and print the build target (`linux/386`), which is the
-  point of this repo. Upstream rejects the flag with `flag provided but not defined`.
+* `--version` / `-V` / `version` exist and print the build target (`linux/386`). Upstream rejects
+  the flag with `flag provided but not defined`.
+* Flags written **after** the subcommand now actually apply. Upstream's docs promise
+  `receive --port=1234` and `--port=1234 receive` are equivalent, but Go's `flag` package stops
+  parsing at the first positional token, so the first form was silently ignored — the port stayed
+  53317. The patch reorders argv before parsing, carrying `--flag value` pairs along so that
+  `--output-dir /some/path` is not split.
 
-Apply it yourself with `git apply`, or just build without it — the CLI works either way.
+Apply it yourself with `git apply`, or just build without it — the CLI works either way, minus the
+documented conveniences.
+
+Binary history in this repo's releases:
+
+| tag | what changed |
+|---|---|
+| `v1.3.2-local.1` | richer `--help`, added `--version`. Still silently ignored flags after the subcommand (upstream behaviour). |
+| `v1.3.2-local.3` | fixes flag ordering; supersedes local.1. **Use this one.** |
+
 
 
 ## Use

@@ -27,9 +27,20 @@ if [ ! -d "$SRC" ]; then
 fi
 
 cd "$SRC"
+
+# Optional local patch: richer --help, a real --version, and flags-after-subcommand
+# actually working. Skip it and you simply get upstream behaviour (the CLI still works).
+PATCH=$(ls "$OLDPWD"/patches/*.patch 2>/dev/null | head -1 || true)
+if [ -n "${PATCH:-}" ] && ! grep -q "main.version" main.go 2>/dev/null; then
+    echo "applying $(basename "$PATCH")"
+    git apply "$PATCH" || echo "  patch did not apply cleanly — building upstream code as-is"
+fi
+
 # CGO_ENABLED=0 -> fully static; no glibc version dependency on the target, no i686 libc needed
+# -X main.version stamps the version string printed by --version
+VER=$(git describe --tags --always 2>/dev/null || echo unknown)
 CGO_ENABLED=0 GOOS=linux GOARCH=386 \
-    go build -trimpath -ldflags="-s -w" -o "$OUT" .
+    go build -trimpath -ldflags="-s -w -X main.version=${VER}-local" -o "$OUT" .
 
 echo "built: $OUT"
 file "$OUT"

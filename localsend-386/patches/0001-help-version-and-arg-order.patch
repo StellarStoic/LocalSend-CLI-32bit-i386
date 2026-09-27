@@ -1,5 +1,5 @@
 diff --git a/main.go b/main.go
-index ebe33ce..1559136 100644
+index ebe33ce..2b6e0b6 100644
 --- a/main.go
 +++ b/main.go
 @@ -9,6 +9,7 @@ import (
@@ -167,8 +167,39 @@ index ebe33ce..1559136 100644
  }
  
  // applyFlagOverrides copies any explicitly-set CLI flags onto the loaded
-@@ -332,6 +406,10 @@ func main() {
+@@ -330,8 +404,41 @@ func main() {
+ 	// Parse flags up front so config values (port, output dir, device name)
+ 	// are settled before anything reads them. flagParse() below still runs
  	// for command dispatch (web/send/receive); flag.Parse is idempotent.
++	// Go's flag package stops parsing at the first non-flag token, so a flag
++	// written after the subcommand (`receive --port=1234`) would be silently
++	// ignored even though the docs promise flags work anywhere. Move
++	// flag-looking tokens in front of the positional ones so the documented
++	// behaviour is actually true. Value-taking flags written as `--flag value`
++	// carry their value along; `--flag=value` tokens are already self-contained.
++	if len(os.Args) > 2 {
++		valueFlags := map[string]bool{
++			"--port": true, "-port": true,
++			"--output-dir": true, "-output-dir": true,
++			"--device-name": true, "-device-name": true,
++		}
++		var flags, rest []string
++		argv := os.Args[1:]
++		for i := 0; i < len(argv); i++ {
++			a := argv[i]
++			if strings.HasPrefix(a, "-") {
++				flags = append(flags, a)
++				if valueFlags[a] && i+1 < len(argv) && !strings.Contains(a, "=") {
++					flags = append(flags, argv[i+1])
++					i++
++				}
++				continue
++			}
++			rest = append(rest, a)
++		}
++		os.Args = append([]string{os.Args[0]}, append(flags, rest...)...)
++	}
++
  	flag.Usage = showUsage
  	flag.Parse()
 +	if showVersion {

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=LocalSend (receive, auto-accept — DANGER)
+GenericName=Receive files without being asked
+Comment=DANGER: accepts every incoming file from any device on this network without asking. Asks for a typed confirmation in the terminal first.
+Exec=localsend-cli-quicksave
+TryExec=localsend-cli-quicksave
+Icon=localsend-cli-warning
+Terminal=true
+Categories=Network;FileTransfer;
+Keywords=localsend;receive;auto-accept;quicksave;danger;unattended;files;
+StartupNotify=true
