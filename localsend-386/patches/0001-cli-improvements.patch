@@ -80,6 +80,103 @@ index 9300795..0c38a0b 100644
  		message.LastSeen = time.Now()
  
  		logger.Debugf("Parsed message from %s: %+v", remoteAddr.IP.String(), message)
+diff --git a/internal/tui/dashboard.go b/internal/tui/dashboard.go
+index 07172ba..d790841 100644
+--- a/internal/tui/dashboard.go
++++ b/internal/tui/dashboard.go
+@@ -79,7 +79,7 @@ type dashboardTextInputModel struct {
+ }
+ 
+ func initialDashboardTextInputModel() dashboardTextInputModel {
+-	return dashboardTextInputModel{placeholder: "Enter file path..."}
++	return dashboardTextInputModel{placeholder: "Enter a file path, or the text to send..."}
+ }
+ 
+ func (m dashboardTextInputModel) Init() bubbletea.Cmd { return nil }
+@@ -142,19 +142,36 @@ func (m dashboardTextInputModel) Update(msg bubbletea.Msg) (dashboardTextInputMo
+ 		case "enter":
+ 			m.done = true
+ 		default:
+-			char := msg.String()
+-			if isPathInputChar(char) {
+-				m.value = m.value[:m.cursor] + char + m.value[m.cursor:]
+-				m.cursor++
++			// Insert whatever the key actually produced. Named keys (esc,
++			// ctrl+x, ...) carry no runes; a paste (Ctrl+Shift+V) arrives as
++			// one KeyMsg holding the whole string -- which the old
++			// path-only character whitelist threw away, so pasting a
++			// sentence into this box did nothing at all.
++			if len(msg.Runes) > 0 {
++				insert := sanitizeInput(string(msg.Runes))
++				m.value = m.value[:m.cursor] + insert + m.value[m.cursor:]
++				m.cursor += len(insert)
+ 			}
+ 		}
+ 	}
+ 	return m, nil
+ }
+ 
+-func isPathInputChar(char string) bool {
+-	return char == "." || char == "/" || char == "\\" || char == ":" || char == "-" || char == "_" ||
+-		(char >= "a" && char <= "z") || (char >= "A" && char <= "Z") || (char >= "0" && char <= "9")
++// sanitizeInput keeps typed and pasted input intact apart from control
++// characters: this box accepts the text of a message, so spaces, commas and
++// quotes have to survive. Newlines and tabs become spaces, because a message is
++// sent as a single line.
++func sanitizeInput(s string) string {
++	return strings.Map(func(r rune) rune {
++		switch r {
++		case '\n', '\r', '	':
++			return ' '
++		}
++		if r < 0x20 || r == 0x7f {
++			return -1
++		}
++		return r
++	}, s)
+ }
+ 
+ func (m dashboardTextInputModel) View() string {
+diff --git a/internal/tui/dashboard_test.go b/internal/tui/dashboard_test.go
+index 7ccb93b..4d373a5 100644
+--- a/internal/tui/dashboard_test.go
++++ b/internal/tui/dashboard_test.go
+@@ -107,6 +107,35 @@ func TestMainDashboardSendPromptResult(t *testing.T) {
+ 	}
+ }
+ 
++func TestDashboardSendBoxAcceptsPastedText(t *testing.T) {
++	m := initialDashboardTextInputModel()
++
++	// A paste arrives as ONE KeyMsg holding the whole string. The old path-only
++	// character whitelist dropped it entirely, so pasting a sentence into the
++	// dashboard did nothing at all.
++	pasted := "meeting at 18:00, bring the adapter"
++	m, _ = m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyRunes, Runes: []rune(pasted)})
++	if got := m.Value(); got != pasted {
++		t.Fatalf("pasted value = %q, want %q", got, pasted)
++	}
++
++	// Newlines and tabs reach us from multi-line clipboards and must not survive
++	// as control characters: the message goes out as a single line.
++	m, _ = m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyRunes, Runes: []rune("a\nb\tc")})
++	if got := m.Value(); got != pasted+"a b c" {
++		t.Fatalf("after multi-line paste value = %q, want %q", got, pasted+"a b c")
++	}
++
++	// A single typed character still lands, and named keys carry no runes so
++	// they must not be inserted as text.
++	m, _ = m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyRunes, Runes: []rune("!")})
++	before := m.Value()
++	m, _ = m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEscape})
++	if m.Value() != before {
++		t.Fatalf("escape key modified the value: %q -> %q", before, m.Value())
++	}
++}
++
+ func TestMainDashboardRendersDependencyStates(t *testing.T) {
+ 	m := newDashboardModel(MainDeps{
+ 		DeviceName:  "Laptop",
 diff --git a/internal/utils/clipboard/clipboard.go b/internal/utils/clipboard/clipboard.go
 index 962d275..bf338d6 100644
 --- a/internal/utils/clipboard/clipboard.go
@@ -96,7 +193,7 @@ index 962d275..bf338d6 100644
 +	return clipboard.ReadAll()
 +}
 diff --git a/main.go b/main.go
-index ebe33ce..b35d443 100644
+index ebe33ce..66fe429 100644
 --- a/main.go
 +++ b/main.go
 @@ -4,11 +4,13 @@ import (
@@ -121,7 +218,7 @@ index ebe33ce..b35d443 100644
  	"github.com/tingkai-c/localsend-cli/internal/utils/logger"
  	"github.com/tingkai-c/localsend-cli/static"
  )
-@@ -67,6 +70,22 @@ func ReceiveMode() {
+@@ -67,10 +70,37 @@ func ReceiveMode() {
  		return
  	}
  	discovery.ListenAndStartBroadcasts(nil)
@@ -144,7 +241,22 @@ index ebe33ce..b35d443 100644
  	logger.Infof("Waiting to receive files (output: %s)...", config.ConfigData.OutputDir)
  	waitForInterrupt("Receive mode stopped.")
  }
-@@ -79,6 +98,31 @@ func SendMode(filePath string) {
+ 
++// looksLikePath reports whether the dashboard box was given a file name rather
++// than the text of a message, so a mistyped path is still reported as a missing
++// file instead of being sent as prose. Deliberately narrow: a sentence contains
++// spaces and rarely contains a slash.
++func looksLikePath(value string) bool {
++	if strings.HasPrefix(value, "~") || strings.ContainsAny(value, `/\`) {
++		return true
++	}
++	return !strings.Contains(value, " ") && filepath.Ext(value) != ""
++}
++
+ func SendMode(filePath string) {
+ 	err := handlers.SendFile(filePath)
+ 	if err != nil {
+@@ -79,6 +109,31 @@ func SendMode(filePath string) {
  }
  
  func SendTextMode(message string) {
@@ -176,7 +288,7 @@ index ebe33ce..b35d443 100644
  	dir, err := os.MkdirTemp("", "localsend-cli-text-*")
  	if err != nil {
  		logger.Errorf("Failed to create temporary text payload: %v", err)
-@@ -106,39 +150,111 @@ func waitForInterrupt(message string) {
+@@ -106,39 +161,112 @@ func waitForInterrupt(message string) {
  	fmt.Println("\n" + message)
  }
  
@@ -272,6 +384,7 @@ index ebe33ce..b35d443 100644
 +	fmt.Println("  localsend-cli send-text \"meeting at 18:00 in the kitchen\"")
 +	fmt.Println("  localsend-cli send-text --clipboard          # clipboard -> another device")
 +	fmt.Println("  xclip -o | localsend-cli send-text -         # or via a pipe")
++	fmt.Println("  localsend-cli                                # dashboard: the send box takes a file path OR the text to send")
 +	fmt.Println()
 +	fmt.Println("  # browser mode: peers open http://<this-machine-ip>:53317/ and download")
 +	fmt.Println("  localsend-cli web")
@@ -310,7 +423,7 @@ index ebe33ce..b35d443 100644
  			showUsage()
  			ExitMode()
  		}
-@@ -166,8 +282,8 @@ func flagParse(httpServer *http.ServeMux, port int, flagOpen *bool) {
+@@ -166,8 +294,8 @@ func flagParse(httpServer *http.ServeMux, port int, flagOpen *bool) {
  	case "receive":
  		ReceiveMode()
  	case "send-text":
@@ -321,7 +434,7 @@ index ebe33ce..b35d443 100644
  			ExitMode()
  		}
  		SendTextMode(strings.Join(args[1:], " "))
-@@ -280,10 +396,16 @@ func humanBytes(n int64) string {
+@@ -280,10 +408,16 @@ func humanBytes(n int64) string {
  }
  
  var (
@@ -342,7 +455,7 @@ index ebe33ce..b35d443 100644
  )
  
  func init() {
-@@ -291,6 +413,11 @@ func init() {
+@@ -291,6 +425,11 @@ func init() {
  	flag.StringVar(&outputDir, "output-dir", "", "Directory for received files (overrides config)")
  	flag.StringVar(&deviceName, "device-name", "", "Device alias broadcast over the network (overrides config)")
  	flag.BoolVar(&quickSave, "quick-save", false, "Skip the approval prompt and auto-accept every incoming session (overrides config)")
@@ -354,7 +467,7 @@ index ebe33ce..b35d443 100644
  }
  
  // applyFlagOverrides copies any explicitly-set CLI flags onto the loaded
-@@ -330,8 +457,42 @@ func main() {
+@@ -330,8 +469,42 @@ func main() {
  	// Parse flags up front so config values (port, output dir, device name)
  	// are settled before anything reads them. flagParse() below still runs
  	// for command dispatch (web/send/receive); flag.Parse is idempotent.
@@ -397,7 +510,7 @@ index ebe33ce..b35d443 100644
  	applyFlagOverrides()
  
  	// Lightweight subcommands that only touch the trust file should exit
-@@ -339,8 +500,8 @@ func main() {
+@@ -339,8 +512,8 @@ func main() {
  	if args := flag.Args(); len(args) > 0 {
  		switch args[0] {
  		case "send-text":
@@ -408,3 +521,32 @@ index ebe33ce..b35d443 100644
  				ExitMode()
  			}
  			SendTextMode(strings.Join(args[1:], " "))
+@@ -454,12 +627,25 @@ func main() {
+ 		case tui.MainActionExit, tui.MainActionNone:
+ 			ExitMode()
+ 		case tui.MainActionSend:
+-			if result.FilePath == "" {
+-				fmt.Println("Send mode requires a file path")
++			value := strings.TrimSpace(result.FilePath)
++			if value == "" {
++				fmt.Println("Send mode requires a file path, or some text to send")
+ 				os.Exit(1)
+ 			}
+ 			handlers.SetApprovalProvider(nil)
+-			SendMode(result.FilePath)
++			// The box takes either a file from disk or the text of a message.
++			// Treating everything as a path is what sent people hunting for a
++			// "clipboard option": the text they pasted was never a path, so it
++			// went nowhere. A path that does not exist is still reported as a
++			// missing file rather than quietly sent as prose.
++			if _, err := os.Stat(value); err == nil {
++				SendMode(value)
++			} else if looksLikePath(value) {
++				fmt.Printf("No such file: %s\n", value)
++			} else {
++				logger.Infof("Sending %q as a text message", value)
++				SendTextMode(value)
++			}
+ 		case tui.MainActionWeb:
+ 			handlers.SetApprovalProvider(nil)
+ 			WebServerMode(httpServer, port)

@@ -128,6 +128,13 @@ The released binary is built from upstream `v1.3.2` **plus**
   broadcasts to, so it heard its own announcement and listed itself — visible as
   `IdeaPad 192.168.0.58` inside the picker on the IdeaPad. Filtered in both discovery paths by
   fingerprint and by local interface address, so a multi-homed box cannot slip through either.
+* **Text pasted into the dashboard no longer vanishes.** The send box only accepted `. / \ : - _`
+  and alphanumerics, so a pasted sentence — which arrives as *one* keystroke message holding the whole
+  string — was dropped entirely, and spaces were stripped from anything typed. That made it look as
+  though there were no way to send text at all. The box now takes printable input of any kind and
+  sends what it is given as a message when it is not a file on disk; a mistyped *path* is still
+  reported as a missing file rather than quietly sent as prose.
+  (`TestDashboardSendBoxAcceptsPastedText` covers it.)
 
 Apply it yourself with `git apply`, or just build without it — the CLI works either way, minus the
 documented conveniences. Verified to apply cleanly to upstream `main` == `v1.3.2` (`64b192a`).
@@ -140,7 +147,8 @@ Binary history in this repo's releases:
 | `v1.3.2-local.3` | fixes flag ordering; supersedes local.1. |
 | `v1.3.2-local.4` | receive mode names the device in its own console output. |
 | `v1.3.2-local.5` | `send-text --clipboard` / `send-text -` (stdin), and a **LocalSend (send clipboard)** menu entry. |
-| `v1.3.2-local.6` | stops the device listing **itself** as a send target. **Use this one.** |
+| `v1.3.2-local.6` | stops the device listing **itself** as a send target. |
+| `v1.3.2-local.7` | the dashboard send box takes **text**, not only file paths — pasting a sentence works. **Use this one.** |
 
 
 
