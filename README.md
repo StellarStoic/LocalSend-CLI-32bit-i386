@@ -1,22 +1,27 @@
-# netbook-32bit-toolkit
+# LocalSend CLI for 32-bit x86 (i386)
 
-Tooling for keeping a 32-bit-only x86 laptop (Intel Atom N2xx / Pineview class) alive on a
-modern-ish Debian-derived system — plus a recipe for getting **LocalSend** working on it.
+Getting **LocalSend** working on a 32-bit-only x86 laptop — plus the toolkit that kept that
+laptop alive while I did it.
 
-Written while rescuing a Lenovo IdeaPad S10-2 (Intel Atom N280, 2 GB RAM, i686 only) running
-Kali Linux rolling:
+**`localsend-386/` is the point of this repo.** LocalSend has never shipped a 32-bit Linux build
+(verified across all 27 GitHub releases, 1.3.1 → 1.18.2: only `linux-x86-64` and `linux-arm-64`;
+Flutter's Linux embedder targets x64/arm64/riscv64 only, so the official app cannot be built for
+i386 either). This directory cross-compiles a third-party CLI that speaks the same protocol
+v2/v3 for `linux/386`, and verifies it with a stdlib-only protocol client.
 
-1. **`localsend-386/`** — LocalSend has never shipped a 32-bit Linux build (verified across all
-   27 GitHub releases, 1.3.1 → 1.18.2; Flutter's Linux embedder targets x64/arm64/riscv64 only,
-   so building the official app for i386 is impossible). This directory cross-compiles a
-   third-party CLI that speaks the same protocol v2/v3, for `linux/386`, and verifies it with a
-   protocol-level test client.
-2. **`kali-i386-upgrade/`** — automation that takes a stranded i386 Kali install through a
-   ~2.5-year Debian bookworm → trixie + 64-bit `time_t` (t64) migration: 3053 package operations,
-   detached from SSH, with mirror-conflict recovery and stale-package unblocking.
-3. **`hermes-i686/`** — a preflight check and lockfile analyser for the question "can
-   [Hermes Agent](https://hermes-agent.nousresearch.com/docs) run natively on this thing?".
-   Short answer: no, and the analyser shows exactly which dependencies say so.
+The rest came out of the same machine (a Lenovo IdeaPad S10-2, Intel Atom N280, 2 GB RAM, i686
+only) and is what made the LocalSend part possible:
+
+* **`localsend-386/`** — cross-compile + install + verify the 32-bit LocalSend CLI.
+* **`kali-i386-upgrade/`** — automation that took the same box through a ~2.5-year Debian
+  bookworm → trixie + 64-bit `time_t` (t64) migration: 3053 package operations, detached from
+  SSH, with mirror-conflict and stale-package recovery.
+* **`hermes-i686/`** — a preflight check and `uv.lock` analyser for "can this box run
+  [Hermes Agent](https://hermes-agent.nousresearch.com/docs) natively?". Short answer: no, and
+  the analyser shows exactly which dependencies say so.
+* **`docs/PITFALLS.md`** — the distilled failure catalogue from the real run. The most useful
+  file here if you own an ageing 32-bit machine.
+
 
 ## Credits / upstream (none of this is my code)
 
