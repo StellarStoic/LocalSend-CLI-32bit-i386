@@ -61,12 +61,12 @@ v9.11.2 (2018).
   target machine.
 * A 64-bit machine to build from. Cross-compiling is the whole point; do not compile on the target.
 
-## Context
+## See also
 
-This client was built for a 32-bit-only x86 laptop (a 2010 netbook, Intel Atom, 2 GB RAM). The
-upgrade tooling and the Hermes-on-i686 feasibility analysis that came out of the same machine live
-in a **private** repo — they are specific to one box and useful to nobody else, so they are not
-published. Nothing in this repo depends on them.
+**<https://github.com/StellarStoic/netbook-32bit-toolkit>** — the Kali i386 upgrade automation and
+the Hermes-on-i686 feasibility analysis built for the same machine (a Lenovo IdeaPad S10-2, Intel
+Atom N280, 2 GB RAM, 32-bit only). Worth a look if you are keeping an ageing 32-bit box alive;
+nothing in this repo depends on it.
 
 ## License
 
