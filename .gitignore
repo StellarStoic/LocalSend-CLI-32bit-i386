@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# local run artifacts — never commit these
+*.log
+*.log.tail
+upgrade-snapshot/
+backup-*/
+*-progress.log
+*.deb
+localsend-cli-386
+id_ed25519_*
+.netbook-sudo
+sudo-password*
+*.tar.gz
