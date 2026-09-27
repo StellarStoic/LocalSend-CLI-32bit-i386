@@ -1,3 +1,85 @@
+diff --git a/internal/discovery/http_broadcast.go b/internal/discovery/http_broadcast.go
+index c3ba0da..28d5598 100644
+--- a/internal/discovery/http_broadcast.go
++++ b/internal/discovery/http_broadcast.go
+@@ -72,6 +72,11 @@ func ListenForHttpBroadCast(updates chan<- []models.SendModel) {
+ 
+ 				response.LastSeen = time.Now()
+ 
++				if isSelf(ip, response.Fingerprint) {
++					logger.Debugf("Ignoring our own HTTP announcement from %s", ip)
++					return
++				}
++
+ 				shared.DevicesMutex.Lock()
+ 				shared.DiscoveredDevices[ip] = response
+ 				shared.DevicesMutex.Unlock()
+diff --git a/internal/discovery/self.go b/internal/discovery/self.go
+new file mode 100644
+index 0000000..6c1dda4
+--- /dev/null
++++ b/internal/discovery/self.go
+@@ -0,0 +1,42 @@
++package discovery
++
++import (
++	"net"
++
++	"github.com/tingkai-c/localsend-cli/internal/discovery/shared"
++)
++
++// isSelf reports whether a discovery announcement came from this machine, so it
++// is filtered out instead of being offered as a send target. A device finds its
++// own announcements because it joins the same multicast group it broadcasts to.
++//
++// Two signals, because either alone is insufficient:
++//   - the fingerprint this machine advertises (stable, and correct on a
++//     multi-homed box where the same device appears under several IPs);
++//   - any IP that belongs to a local interface (catches a peer answering on
++//     our address, and works even before the fingerprint is set).
++func isSelf(ip string, fingerprint string) bool {
++	own := shared.Message.Fingerprint
++	if fingerprint != "" && own != "" && fingerprint == own {
++		return true
++	}
++	return isLocalIP(ip)
++}
++
++// isLocalIP reports whether ip is assigned to one of this machine's interfaces.
++func isLocalIP(ip string) bool {
++	parsed := net.ParseIP(ip)
++	if parsed == nil {
++		return false
++	}
++	addrs, err := net.InterfaceAddrs()
++	if err != nil {
++		return false
++	}
++	for _, addr := range addrs {
++		if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.Equal(parsed) {
++			return true
++		}
++	}
++	return false
++}
+diff --git a/internal/discovery/udp_broadcast.go b/internal/discovery/udp_broadcast.go
+index 9300795..0c38a0b 100644
+--- a/internal/discovery/udp_broadcast.go
++++ b/internal/discovery/udp_broadcast.go
+@@ -53,6 +53,13 @@ func ListenForUDPBroadcasts(updates chan<- []models.SendModel) {
+ 			continue
+ 		}
+ 
++		// Our own announcement: we join the group we broadcast to, so without
++		// this the device lists itself as a send target.
++		if isSelf(remoteAddr.IP.String(), message.Fingerprint) {
++			logger.Debugf("Ignoring our own announcement from %s", remoteAddr.String())
++			continue
++		}
++
+ 		message.LastSeen = time.Now()
+ 
+ 		logger.Debugf("Parsed message from %s: %+v", remoteAddr.IP.String(), message)
 diff --git a/internal/utils/clipboard/clipboard.go b/internal/utils/clipboard/clipboard.go
 index 962d275..bf338d6 100644
 --- a/internal/utils/clipboard/clipboard.go
