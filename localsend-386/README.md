@@ -167,6 +167,18 @@ The released binary is built from upstream `v1.3.2` **plus**
   terminals quote the path, and both can carry stray whitespace — each made a perfectly good dropped
   file look like a missing file. `cleanDroppedPath` strips the URI scheme (percent-decoding it too),
   the surrounding quotes and the whitespace. (`TestCleanDroppedPath`.)
+* **Only a real file on disk counts as a file.** The earlier rule — "does the value *look* like a
+  path?" — was wrong in a way that is invisible until nothing arrives: a page of notes containing a
+  URL was judged to be a missing file, printed `No such file:` and went nowhere. Since the box is
+  labelled *Path or text*, `classifySendInput` now sends anything that is not an existing file as the
+  text it is, and says so when the value looked like a path
+  (`Nothing on disk at that path — sending it as text instead (5108 characters).`). The
+  shape-based test survives only to produce that note. (`TestClassifySendInput`.)
+* **The recipient picker explains an empty list instead of spinning silently.** A machine advertises
+  itself only while LocalSend is scanning on it, so the list is often legitimately empty — and with
+  the device's own announcement filtered out, it stays empty with nothing said about why. It now says
+  so, and **Esc** returns to the dashboard (previously only Ctrl+C, which quit the picker with
+  `no recipient selected`, looking like a dead end).
 
 Apply it yourself with `git apply`, or just build without it — the CLI works either way, minus the
 documented conveniences. Verified to apply cleanly to upstream `main` == `v1.3.2` (`64b192a`).
@@ -182,7 +194,8 @@ Binary history in this repo's releases:
 | `v1.3.2-local.6` | stops the device listing **itself** as a send target. |
 | `v1.3.2-local.7` | the dashboard send box takes **text**, not only file paths — pasting a sentence works. |
 | `v1.3.2-local.8` | the dashboard has a **📋 Send clipboard** menu item and **Ctrl+V**; new **send file** launcher for drag &amp; drop. |
-| `v1.3.2-local.9` | long text scrolls on one line instead of wrapping; a failed send returns to the dashboard instead of closing it; dropped `file://`/quoted paths are normalised. **Use this one.** |
+| `v1.3.2-local.9` | long text scrolls on one line instead of wrapping; a failed send returns to the dashboard instead of closing it; dropped `file://`/quoted paths are normalised. |
+| `v1.3.2-local.10` | only a real file on disk counts as a file (prose with a slash in it is sent as text); the picker explains an empty device list and Esc backs out. **Use this one.** |
 
 
 

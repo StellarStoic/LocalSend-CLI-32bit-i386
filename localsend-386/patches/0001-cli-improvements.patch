@@ -460,6 +460,43 @@ index 7ccb93b..548a07a 100644
  func TestMainDashboardRendersDependencyStates(t *testing.T) {
  	m := newDashboardModel(MainDeps{
  		DeviceName:  "Laptop",
+diff --git a/internal/tui/tui_list.go b/internal/tui/tui_list.go
+index a327b90..5ec0811 100644
+--- a/internal/tui/tui_list.go
++++ b/internal/tui/tui_list.go
+@@ -224,7 +224,7 @@ func (m model) UpdateDashboard(msg bubbletea.Msg) DashboardResult {
+ 
+ func dashboardActionFromKey(key string) DashboardAction {
+ 	switch key {
+-	case "q", "ctrl+c":
++	case "q", "ctrl+c", "esc":
+ 		return DashboardActionQuit
+ 	case "down", "j":
+ 		return DashboardActionMoveDown
+@@ -258,7 +258,13 @@ func (m model) View() string {
+ 			"",
+ 			emptyStyle.Render("🛰️ Scanning for nearby devices…"),
+ 			"",
+-			helpStyle.Render("Press Ctrl+C to exit"),
++			// Say why this can stay empty: it is the single most confusing thing
++			// about sending from here, and it is not a fault.
++			helpStyle.Render("Nothing yet. A machine only advertises itself while"),
++			helpStyle.Render("LocalSend is scanning on it — open LocalSend on the"),
++			helpStyle.Render("other machine and leave it on the Send tab."),
++			"",
++			helpStyle.Render("Press Esc to go back, Ctrl+C to quit"),
+ 		}, "\n")
+ 		return centerInTerminal(panel.Render(body), m.width, m.height)
+ 	}
+@@ -282,7 +288,7 @@ func (m model) View() string {
+ 		lines = append(lines, normalStyle.Render("  "+line))
+ 	}
+ 
+-	lines = append(lines, "", helpStyle.Render("↕ Navigate • Space: toggle • Enter: send • Ctrl+C: quit"))
++	lines = append(lines, "", helpStyle.Render("↕ Navigate • Space: toggle • Enter: send • Esc: back"))
+ 	return centerInTerminal(panel.Render(strings.Join(lines, "\n")), m.width, m.height)
+ }
+ 
 diff --git a/internal/utils/clipboard/clipboard.go b/internal/utils/clipboard/clipboard.go
 index 962d275..bf338d6 100644
 --- a/internal/utils/clipboard/clipboard.go
@@ -476,7 +513,7 @@ index 962d275..bf338d6 100644
 +	return clipboard.ReadAll()
 +}
 diff --git a/main.go b/main.go
-index ebe33ce..71cc793 100644
+index ebe33ce..a950be9 100644
 --- a/main.go
 +++ b/main.go
 @@ -2,13 +2,17 @@ package main
@@ -505,7 +542,7 @@ index ebe33ce..71cc793 100644
  	"github.com/tingkai-c/localsend-cli/internal/utils/logger"
  	"github.com/tingkai-c/localsend-cli/static"
  )
-@@ -67,30 +72,114 @@ func ReceiveMode() {
+@@ -67,30 +72,143 @@ func ReceiveMode() {
  		return
  	}
  	discovery.ListenAndStartBroadcasts(nil)
@@ -532,10 +569,39 @@ index ebe33ce..71cc793 100644
 -func SendMode(filePath string) {
 -	err := handlers.SendFile(filePath)
 -	if err != nil {
-+// looksLikePath reports whether the dashboard box was given a file name rather
-+// than the text of a message, so a mistyped path is still reported as a missing
-+// file instead of being sent as prose. Deliberately narrow: a sentence contains
-+// spaces and rarely contains a slash.
++// sendInput is what the dashboard's box was given.
++type sendInput int
++
++const (
++	sendInputNone sendInput = iota // nothing typed: nothing to do
++	sendInputFile                  // an existing file, to transfer as a file
++	sendInputDir                   // a directory: LocalSend sends files
++	sendInputText                  // anything else, sent as the text it is
++)
++
++// classifySendInput decides what the dashboard box holds. The label is "Path or
++// text", so ONLY a real file on disk counts as a file: text that merely contains
++// a slash — a URL, a nested path mentioned in a note — is still text. Deciding by
++// "does it look like a path" bounced a pasted page of notes back to the menu as a
++// missing file, and nothing was sent.
++func classifySendInput(value string) sendInput {
++	if value == "" {
++		return sendInputNone
++	}
++	info, err := os.Stat(value)
++	switch {
++	case err == nil && info.IsDir():
++		return sendInputDir
++	case err == nil:
++		return sendInputFile
++	}
++	return sendInputText
++}
++
++// looksLikePath reports whether a value is shaped like a file path. It no longer
++// decides anything — deciding by shape sent a pasted page of notes back to the
++// menu as a missing file — it only drives the note that says a value is about to
++// be sent as text rather than as a file.
 +func looksLikePath(value string) bool {
 +	if strings.HasPrefix(value, "~") || strings.ContainsAny(value, `/\`) {
 +		return true
@@ -628,7 +694,7 @@ index ebe33ce..71cc793 100644
  }
  
  func ExitMode() {
-@@ -106,39 +195,112 @@ func waitForInterrupt(message string) {
+@@ -106,39 +224,112 @@ func waitForInterrupt(message string) {
  	fmt.Println("\n" + message)
  }
  
@@ -763,7 +829,7 @@ index ebe33ce..71cc793 100644
  			showUsage()
  			ExitMode()
  		}
-@@ -166,8 +328,8 @@ func flagParse(httpServer *http.ServeMux, port int, flagOpen *bool) {
+@@ -166,8 +357,8 @@ func flagParse(httpServer *http.ServeMux, port int, flagOpen *bool) {
  	case "receive":
  		ReceiveMode()
  	case "send-text":
@@ -774,7 +840,7 @@ index ebe33ce..71cc793 100644
  			ExitMode()
  		}
  		SendTextMode(strings.Join(args[1:], " "))
-@@ -280,10 +442,16 @@ func humanBytes(n int64) string {
+@@ -280,10 +471,16 @@ func humanBytes(n int64) string {
  }
  
  var (
@@ -795,7 +861,7 @@ index ebe33ce..71cc793 100644
  )
  
  func init() {
-@@ -291,6 +459,11 @@ func init() {
+@@ -291,6 +488,11 @@ func init() {
  	flag.StringVar(&outputDir, "output-dir", "", "Directory for received files (overrides config)")
  	flag.StringVar(&deviceName, "device-name", "", "Device alias broadcast over the network (overrides config)")
  	flag.BoolVar(&quickSave, "quick-save", false, "Skip the approval prompt and auto-accept every incoming session (overrides config)")
@@ -807,7 +873,7 @@ index ebe33ce..71cc793 100644
  }
  
  // applyFlagOverrides copies any explicitly-set CLI flags onto the loaded
-@@ -330,8 +503,42 @@ func main() {
+@@ -330,8 +532,42 @@ func main() {
  	// Parse flags up front so config values (port, output dir, device name)
  	// are settled before anything reads them. flagParse() below still runs
  	// for command dispatch (web/send/receive); flag.Parse is idempotent.
@@ -850,7 +916,7 @@ index ebe33ce..71cc793 100644
  	applyFlagOverrides()
  
  	// Lightweight subcommands that only touch the trust file should exit
-@@ -339,8 +546,8 @@ func main() {
+@@ -339,8 +575,8 @@ func main() {
  	if args := flag.Args(); len(args) > 0 {
  		switch args[0] {
  		case "send-text":
@@ -861,7 +927,7 @@ index ebe33ce..71cc793 100644
  				ExitMode()
  			}
  			SendTextMode(strings.Join(args[1:], " "))
-@@ -428,41 +635,73 @@ func main() {
+@@ -428,41 +664,72 @@ func main() {
  		if err != nil {
  			logger.Warnf("Failed to load transfer history for dashboard: %v", err)
  		}
@@ -925,29 +991,28 @@ index ebe33ce..71cc793 100644
 +				// A dropped path can arrive quoted or as a file:// URI, so
 +				// normalise it before deciding whether it names a file.
 +				value := cleanDroppedPath(result.FilePath)
-+				if value == "" {
++				handlers.SetApprovalProvider(nil)
++				switch classifySendInput(value) {
++				case sendInputNone:
 +					fmt.Println("Send mode needs a file from this machine, or the text to send.")
 +					continue
-+				}
-+				handlers.SetApprovalProvider(nil)
-+				info, statErr := os.Stat(value)
-+				switch {
-+				case statErr == nil && info.IsDir():
++				case sendInputDir:
 +					fmt.Printf("That is a directory, and LocalSend sends files: %s\n", value)
 +					continue
-+				case statErr == nil:
++				case sendInputFile:
 +					if err := SendMode(value); err != nil {
 +						continue // back to the dashboard, not out of the program
 +					}
-+				case looksLikePath(value):
-+					fmt.Printf("No such file: %s\n", value)
-+					continue
 +				default:
-+					// The box takes either a file from disk or the text of a
-+					// message. Treating everything as a path is what sent people
-+					// hunting for a "clipboard option": their text was never a
-+					// path, so it went nowhere.
-+					logger.Infof("Sending %q as a text message", value)
++					// The box is labelled "Path or text": anything that is not a
++					// file on disk is sent as the text it is. Judging by "does it
++					// look like a path" bounced pasted prose straight back to the
++					// menu as a missing file — a page of notes containing a URL is
++					// not a filename.
++					if looksLikePath(value) {
++						fmt.Printf("Nothing on disk at that path — sending it as text instead (%d characters).\n", len([]rune(value)))
++					}
++					logger.Infof("Sending %d characters as a text message", len([]rune(value)))
 +					if err := sendText(value); err != nil {
 +						logger.Error(err)
 +						continue
