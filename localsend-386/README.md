@@ -36,6 +36,41 @@ ssh target 'sudo install -m0755 /tmp/localsend-cli-386 /usr/local/bin/localsend-
 ssh target 'localsend-cli --help'
 ```
 
+## Desktop menu entry (so it's not a terminal-only tool)
+
+`desktop/` holds a launcher, an icon and an installer — because a CLI that lives in
+`/usr/local/bin` is invisible to someone who works from the application menu:
+
+```bash
+scp -r desktop target:/tmp/
+ssh target 'sudo bash /tmp/desktop/install-desktop-integration.sh /tmp/localsend-cli-386'
+```
+
+That installs:
+
+| path | what |
+|---|---|
+| `/usr/local/bin/localsend-cli` | the binary |
+| `/usr/share/applications/localsend-cli.desktop` | menu entry **LocalSend** → opens the TUI dashboard in a terminal |
+| `/usr/share/applications/localsend-cli-receive.desktop` | menu entry **LocalSend (receive)** → `localsend-cli receive`, approving each sender |
+| `/usr/share/icons/hicolor/scalable/apps/localsend-cli.svg` | scalable icon (a generic send glyph, deliberately *not* the upstream logo) |
+
+Both entries use `Terminal=true`, so the desktop opens them in whatever terminal emulator is
+configured — no terminal-specific flags, works on XFCE/qterminal, GNOME, or anything else.
+`desktop-file-validate` passes with no hints; `update-desktop-database` is run for you.
+
+## A note on the binary in this repo's releases
+
+The released binary is built from upstream `v1.3.2` **plus** `patches/0001-richer-help-and-version-flag.patch`:
+
+* `--help` now lists every command with usage notes, environment variables, config file locations
+  and a dozen worked examples (upstream's help was a bare command list).
+* `--version` / `-V` / `version` exist and print the build target (`linux/386`), which is the
+  point of this repo. Upstream rejects the flag with `flag provided but not defined`.
+
+Apply it yourself with `git apply`, or just build without it — the CLI works either way.
+
+
 ## Use
 
 ```bash

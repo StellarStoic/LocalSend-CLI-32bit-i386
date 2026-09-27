@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=LocalSend
+GenericName=Send files over the local network
+Comment=Send and receive files, text and clipboard with LocalSend-compatible devices
+Exec=localsend-cli
+TryExec=localsend-cli
+Icon=localsend-cli
+Terminal=true
+Categories=Network;FileTransfer;
+Keywords=localsend;share;send;receive;airdrop;lan;file;clipboard;
+StartupNotify=true

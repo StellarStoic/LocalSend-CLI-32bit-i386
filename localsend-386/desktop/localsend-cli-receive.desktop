@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=LocalSend (receive)
+GenericName=Receive files from the local network
+Comment=Wait for incoming files; each sender is approved individually in the terminal
+Exec=localsend-cli receive
+TryExec=localsend-cli
+Icon=localsend-cli
+Terminal=true
+Categories=Network;FileTransfer;
+Keywords=localsend;receive;incoming;lan;file;
+StartupNotify=true

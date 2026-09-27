@@ -12,7 +12,9 @@ v2/v3 for `linux/386`, and verifies it with a stdlib-only protocol client.
 The rest came out of the same machine (a Lenovo IdeaPad S10-2, Intel Atom N280, 2 GB RAM, i686
 only) and is what made the LocalSend part possible:
 
-* **`localsend-386/`** — cross-compile + install + verify the 32-bit LocalSend CLI.
+* **`localsend-386/`** — cross-compile + install + verify the 32-bit LocalSend CLI, including
+  `desktop/` for a real menu entry (**LocalSend** / **LocalSend (receive)**) with an icon, so it
+  isn't a terminal-only tool. Releases carry the built binary and its sha256.
 * **`kali-i386-upgrade/`** — automation that took the same box through a ~2.5-year Debian
   bookworm → trixie + 64-bit `time_t` (t64) migration: 3053 package operations, detached from
   SSH, with mirror-conflict and stale-package recovery.

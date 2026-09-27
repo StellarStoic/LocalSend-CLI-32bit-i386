@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LocalSend CLI — simple "send to a peer" glyph. Deliberately generic: it is
+     NOT the official LocalSend logo, so it can't be mistaken for the upstream app. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2bb8a8"/>
+      <stop offset="100%" stop-color="#12726b"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="26" fill="url(#bg)"/>
+  <!-- tray / device -->
+  <path d="M32 76 h18 a14 14 0 0 0 28 0 h18 v18 a8 8 0 0 1 -8 8 h-48 a8 8 0 0 1 -8 -8 z"
+        fill="#ffffff" fill-opacity="0.92"/>
+  <!-- arrow up (sending) -->
+  <path d="M64 26 l18 20 h-11 v22 h-14 v-22 h-11 z" fill="#ffffff"/>
+</svg>
