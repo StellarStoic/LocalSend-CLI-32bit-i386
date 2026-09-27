@@ -102,3 +102,15 @@ so an unconfigured install changes identity each time it starts — always pin i
 Finally: a client only announces while it is actively scanning. A desktop LocalSend
 sitting on the Receive tab broadcasts nothing, so "nobody can see me" may just mean the
 Send tab is closed.
+
+## Worked example, including the traps that hid these layers
+
+[`issue-silent-receive-failures.md`](issue-silent-receive-failures.md) is the full
+debugging session: three stacked causes (VPN routing, sender-side ufw, receiver-side ufw
+allowing only SSH) plus the eight traps that made it expensive — a live ufw ruleset behind
+an `inactive` service, a failed `sudo -n` reading as a clean machine, silent drops versus
+RSTs, `ss -tan state syn-recv | wc -l` counting its own header, multicast being impossible
+to `ct mark`, a headless receiver that cannot prompt, `pkill -f` killing the shell that
+runs it, and backgrounded `sudo -S` losing its password to `/dev/null`.
+
+Tracked as [issue #1](https://github.com/StellarStoic/LocalSend-CLI-32bit-i386/issues/1).
