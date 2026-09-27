@@ -178,7 +178,27 @@ The released binary is built from upstream `v1.3.2` **plus**
   itself only while LocalSend is scanning on it, so the list is often legitimately empty — and with
   the device's own announcement filtered out, it stays empty with nothing said about why. It now says
   so, and **Esc** returns to the dashboard (previously only Ctrl+C, which quit the picker with
-  `no recipient selected`, looking like a dead end).
+  `no recipient selected`, looking like a dead end.
+* **Devices that are only "ready to receive" are found now.** Multicast only reaches a device while it
+  is announcing, and a LocalSend app announces only while it is scanning — its Send screen. A machine
+  sitting ready to receive says nothing at all, so it was invisible here while being perfectly
+  reachable. Measured on a real network: with the other machine's app running and holding port 53317,
+  a 20-second listen heard *nothing but the listening machine itself*. But such an app still **answers**
+  on its HTTP port:
+
+  ```
+  $ curl -sk https://192.168.0.64:53317/api/localsend/v2/info
+  {"alias":"T480","version":"2.1","deviceType":"desktop","fingerprint":"2BF01B52…"}
+  ```
+
+  So discovery now also asks the local subnet directly — every address on the /24 of each interface,
+  64 at a time with a 900 ms timeout, refreshed every 15 s — and records whoever answers, skipping
+  itself and preserving the details of a device that does announce. Verified live: sending from the
+  32-bit machine logged
+  `T480 (192.168.0.64) is not announcing itself but answered a direct probe`. If you would rather it
+  stay quiet on the network, this is the one behaviour here that talks to addresses it has not heard
+  from. (`TestProbeRecordsADeviceThatDoesNotAnnounce`, `…IgnoresHostsThatDoNotAnswer`,
+  `…DoesNotOverwriteAnAnnouncedDevice`, `TestLocalSubnetHostsNeverIncludesThisMachine`.)
 
 Apply it yourself with `git apply`, or just build without it — the CLI works either way, minus the
 documented conveniences. Verified to apply cleanly to upstream `main` == `v1.3.2` (`64b192a`).
@@ -195,7 +215,8 @@ Binary history in this repo's releases:
 | `v1.3.2-local.7` | the dashboard send box takes **text**, not only file paths — pasting a sentence works. |
 | `v1.3.2-local.8` | the dashboard has a **📋 Send clipboard** menu item and **Ctrl+V**; new **send file** launcher for drag &amp; drop. |
 | `v1.3.2-local.9` | long text scrolls on one line instead of wrapping; a failed send returns to the dashboard instead of closing it; dropped `file://`/quoted paths are normalised. |
-| `v1.3.2-local.10` | only a real file on disk counts as a file (prose with a slash in it is sent as text); the picker explains an empty device list and Esc backs out. **Use this one.** |
+| `v1.3.2-local.10` | only a real file on disk counts as a file (prose with a slash in it is sent as text); the picker explains an empty device list and Esc backs out. |
+| `v1.3.2-local.11` | finds devices that are merely **ready to receive** by asking the local subnet directly, instead of only listening for announcements. **Use this one.** |
 
 
 

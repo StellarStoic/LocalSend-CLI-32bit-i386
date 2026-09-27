@@ -1,3 +1,18 @@
+diff --git a/internal/discovery/coordinator.go b/internal/discovery/coordinator.go
+index d1d2104..8102096 100644
+--- a/internal/discovery/coordinator.go
++++ b/internal/discovery/coordinator.go
+@@ -65,6 +65,10 @@ func (c *discoveryCoordinator) start() {
+ 		go c.listenHTTP(c.updates)
+ 		logger.Info("Start broadcasts...")
+ 		go c.startUDP()
++		// Multicast reaches only devices that are actively scanning, so also
++		// ask the local subnet directly: a peer that is merely ready to
++		// receive never announces itself, but it does answer.
++		go probeLocalSubnet()
+ 	})
+ }
+ 
 diff --git a/internal/discovery/http_broadcast.go b/internal/discovery/http_broadcast.go
 index c3ba0da..28d5598 100644
 --- a/internal/discovery/http_broadcast.go
@@ -61,6 +76,301 @@ index 0000000..6c1dda4
 +		}
 +	}
 +	return false
++}
+diff --git a/internal/discovery/subnet_probe.go b/internal/discovery/subnet_probe.go
+new file mode 100644
+index 0000000..f58a0f8
+--- /dev/null
++++ b/internal/discovery/subnet_probe.go
+@@ -0,0 +1,158 @@
++package discovery
++
++import (
++	"crypto/tls"
++	"encoding/json"
++	"io"
++	"net"
++	"net/http"
++	"sync"
++	"time"
++
++	"github.com/tingkai-c/localsend-cli/internal/discovery/shared"
++	"github.com/tingkai-c/localsend-cli/internal/models"
++	"github.com/tingkai-c/localsend-cli/internal/utils/logger"
++)
++
++const (
++	probeInterval    = 15 * time.Second
++	probeTimeout     = 900 * time.Millisecond
++	probeWorkers     = 64
++	probeMaxHosts    = 512
++	probeInfoPath    = "/api/localsend/v2/info"
++	probeDefaultPort = 53317
++)
++
++// probeLocalSubnet asks every address on the local subnet for its LocalSend info.
++//
++// Multicast discovery only finds a device that is announcing, and a LocalSend app
++// announces only while it is scanning, i.e. while its Send screen is open. A
++// machine that is merely ready to receive says nothing at all — and is therefore
++// invisible to every other device on the network — while still answering on its
++// HTTP port. Asking directly is what makes such a machine show up in the picker.
++func probeLocalSubnet() {
++	probeOnce()
++	ticker := time.NewTicker(probeInterval)
++	defer ticker.Stop()
++	for range ticker.C {
++		probeOnce()
++	}
++}
++
++func probeOnce() {
++	client := &http.Client{
++		Timeout: probeTimeout,
++		Transport: &http.Transport{
++			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
++		},
++	}
++	var wg sync.WaitGroup
++	limit := make(chan struct{}, probeWorkers)
++	for _, ip := range localSubnetHosts() {
++		wg.Add(1)
++		limit <- struct{}{}
++		go func(ip string) {
++			defer wg.Done()
++			defer func() { <-limit }()
++			probeHost(client, ip)
++		}(ip)
++	}
++	wg.Wait()
++}
++
++func probeHost(client *http.Client, ip string) {
++	probeHostAt(client, ip, "https://"+net.JoinHostPort(ip, "53317"))
++}
++
++// probeHostAt asks one address and records it. The base URL is a parameter so the
++// behaviour can be tested against a local server instead of a real subnet.
++func probeHostAt(client *http.Client, ip, base string) {
++	resp, err := client.Get(base + probeInfoPath)
++	if err != nil {
++		return
++	}
++	defer resp.Body.Close()
++	if resp.StatusCode != http.StatusOK {
++		return
++	}
++	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
++	if err != nil {
++		return
++	}
++	var info models.BroadcastMessage
++	if err := json.Unmarshal(body, &info); err != nil || info.Alias == "" {
++		return
++	}
++	if isSelf(ip, info.Fingerprint) {
++		return
++	}
++	if info.Port == 0 {
++		info.Port = probeDefaultPort
++	}
++	if info.Protocol == "" {
++		info.Protocol = "https"
++	}
++	info.LastSeen = time.Now()
++
++	shared.DevicesMutex.Lock()
++	existing, known := shared.DiscoveredDevices[ip]
++	if known {
++		// Announced details win over probed ones: the announcement carries the
++		// port and protocol the device actually offers. Just mark it as seen.
++		existing.LastSeen = time.Now()
++		shared.DiscoveredDevices[ip] = existing
++	} else {
++		shared.DiscoveredDevices[ip] = info
++	}
++	shared.DevicesMutex.Unlock()
++
++	if !known {
++		logger.Infof("%s (%s) is not announcing itself but answered a direct probe", info.Alias, ip)
++	}
++}
++
++// localSubnetHosts lists the addresses worth asking, taken from the interfaces
++// that are actually up. It sweeps the /24 around each of this machine's own
++// addresses — the unit people put LocalSend devices on — and never asks itself.
++func localSubnetHosts() []string {
++	ifaces, err := net.Interfaces()
++	if err != nil {
++		return nil
++	}
++	var hosts []string
++	seen := make(map[string]bool)
++	for _, iface := range ifaces {
++		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
++			continue
++		}
++		addrs, err := iface.Addrs()
++		if err != nil {
++			continue
++		}
++		for _, addr := range addrs {
++			ipnet, ok := addr.(*net.IPNet)
++			if !ok {
++				continue
++			}
++			ip4 := ipnet.IP.To4()
++			if ip4 == nil {
++				continue
++			}
++			network := ip4.Mask(net.CIDRMask(24, 32))
++			base := int(network[0])<<24 | int(network[1])<<16 | int(network[2])<<8
++			for host := 1; host <= 254; host++ {
++				n := base | host
++				ip := net.IPv4(byte(n>>24), byte(n>>16), byte(n>>8), byte(n)).String()
++				if seen[ip] || isLocalIP(ip) {
++					continue
++				}
++				seen[ip] = true
++				hosts = append(hosts, ip)
++			}
++		}
++	}
++	if len(hosts) > probeMaxHosts {
++		hosts = hosts[:probeMaxHosts]
++	}
++	return hosts
++}
+diff --git a/internal/discovery/subnet_probe_test.go b/internal/discovery/subnet_probe_test.go
+new file mode 100644
+index 0000000..9dd258b
+--- /dev/null
++++ b/internal/discovery/subnet_probe_test.go
+@@ -0,0 +1,125 @@
++package discovery
++
++import (
++	"encoding/json"
++	"net/http"
++	"net/http/httptest"
++	"testing"
++	"time"
++
++	"github.com/tingkai-c/localsend-cli/internal/discovery/shared"
++	"github.com/tingkai-c/localsend-cli/internal/models"
++)
++
++func forgetDevice(t *testing.T, ip string) {
++	t.Helper()
++	shared.DevicesMutex.Lock()
++	delete(shared.DiscoveredDevices, ip)
++	shared.DevicesMutex.Unlock()
++	t.Cleanup(func() {
++		shared.DevicesMutex.Lock()
++		delete(shared.DiscoveredDevices, ip)
++		shared.DevicesMutex.Unlock()
++	})
++}
++
++func deviceInfoServer(t *testing.T, alias, fingerprint string) *httptest.Server {
++	t.Helper()
++	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.URL.Path != probeInfoPath {
++			w.WriteHeader(http.StatusNotFound)
++			return
++		}
++		_ = json.NewEncoder(w).Encode(map[string]any{
++			"alias":       alias,
++			"version":     "2.1",
++			"deviceType":  "desktop",
++			"fingerprint": fingerprint,
++		})
++	}))
++	t.Cleanup(srv.Close)
++	return srv
++}
++
++// The whole point: a machine that is merely ready to receive announces nothing,
++// and still has to show up in the picker.
++func TestProbeRecordsADeviceThatDoesNotAnnounce(t *testing.T) {
++	srv := deviceInfoServer(t, "T480", "2BF01B52719BCDFBC55876E786C9E62ABC8D6CF75720CA7B4A84A1A24E4676B3")
++	// A TEST-NET address stands in for a real peer, so the local-address check
++	// cannot short-circuit this the way it would for 127.0.0.1.
++	const ip = "192.0.2.7"
++	forgetDevice(t, ip)
++
++	probeHostAt(srv.Client(), ip, srv.URL)
++
++	shared.DevicesMutex.Lock()
++	got, ok := shared.DiscoveredDevices[ip]
++	shared.DevicesMutex.Unlock()
++	if !ok {
++		t.Fatal("a device that answers /info was not recorded, so it cannot appear in the picker")
++	}
++	if got.Alias != "T480" || got.DeviceType != "desktop" {
++		t.Fatalf("recorded device = %+v", got)
++	}
++	if got.Port != probeDefaultPort || got.Protocol != "https" {
++		t.Fatalf("port/protocol were not defaulted: %+v", got)
++	}
++	if got.LastSeen.IsZero() {
++		t.Fatal("LastSeen was not set, so the entry would look stale straight away")
++	}
++}
++
++func TestProbeIgnoresHostsThatDoNotAnswer(t *testing.T) {
++	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		w.WriteHeader(http.StatusNotFound)
++	}))
++	defer srv.Close()
++	const ip = "192.0.2.8"
++	forgetDevice(t, ip)
++
++	probeHostAt(srv.Client(), ip, srv.URL)
++
++	shared.DevicesMutex.Lock()
++	_, ok := shared.DiscoveredDevices[ip]
++	shared.DevicesMutex.Unlock()
++	if ok {
++		t.Fatal("a host that does not answer /info was recorded anyway")
++	}
++}
++
++// An announcement carries the port and protocol the device actually offers, so a
++// probe must not clobber it with defaults — it should only refresh the timestamp.
++func TestProbeDoesNotOverwriteAnAnnouncedDevice(t *testing.T) {
++	const ip = "192.0.2.9"
++	forgetDevice(t, ip)
++	shared.DevicesMutex.Lock()
++	shared.DiscoveredDevices[ip] = models.BroadcastMessage{
++		Alias: "Announced", DeviceType: "desktop", Port: 12345, Protocol: "http", LastSeen: time.Now(),
++	}
++	shared.DevicesMutex.Unlock()
++
++	srv := deviceInfoServer(t, "Probed", "AA")
++	probeHostAt(srv.Client(), ip, srv.URL)
++
++	shared.DevicesMutex.Lock()
++	got := shared.DiscoveredDevices[ip]
++	shared.DevicesMutex.Unlock()
++	if got.Alias != "Announced" || got.Port != 12345 || got.Protocol != "http" {
++		t.Fatalf("the probe overwrote an announced device: %+v", got)
++	}
++}
++
++func TestLocalSubnetHostsNeverIncludesThisMachine(t *testing.T) {
++	hosts := localSubnetHosts()
++	if len(hosts) == 0 {
++		t.Skip("no non-loopback IPv4 interface here")
++	}
++	if len(hosts) > probeMaxHosts {
++		t.Fatalf("sweep would ask %d hosts, more than the %d cap", len(hosts), probeMaxHosts)
++	}
++	for _, ip := range hosts {
++		if isLocalIP(ip) {
++			t.Fatalf("the sweep would ask this machine itself: %s", ip)
++		}
++	}
 +}
 diff --git a/internal/discovery/udp_broadcast.go b/internal/discovery/udp_broadcast.go
 index 9300795..0c38a0b 100644
