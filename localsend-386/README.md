@@ -93,7 +93,7 @@ Left unset, the CLI generates a new random adjective+noun **every run**, so the 
 ## A note on the binary in this repo's releases
 
 The released binary is built from upstream `v1.3.2` **plus**
-`patches/0001-help-version-and-arg-order.patch`:
+`patches/0001-cli-improvements.patch`:
 
 * `--help` now lists every command with usage notes, environment variables, config file locations
   and a dozen worked examples (upstream's help was a bare command list).
@@ -104,16 +104,30 @@ The released binary is built from upstream `v1.3.2` **plus**
   parsing at the first positional token, so the first form was silently ignored — the port stayed
   53317. The patch reorders argv before parsing, carrying `--flag value` pairs along so that
   `--output-dir /some/path` is not split.
+* Receive mode prints this device's **own** identity before it starts listening. The alias is what
+  every other device shows for this machine, so it belongs in the console too:
+
+  ```
+  INFO [IdeaPad] LocalSend receive mode
+  INFO   device name : IdeaPad
+  INFO   fingerprint : 0786dcbd203aef22…
+  INFO   port        : 53317
+  ```
+
+  Without it you have to check another device to learn what this one calls itself — and since an
+  unset `device_name` makes the CLI invent a new name on every launch, that name is not even
+  guessable.
 
 Apply it yourself with `git apply`, or just build without it — the CLI works either way, minus the
-documented conveniences.
+documented conveniences. Verified to apply cleanly to upstream `main` == `v1.3.2` (`64b192a`).
 
 Binary history in this repo's releases:
 
 | tag | what changed |
 |---|---|
 | `v1.3.2-local.1` | richer `--help`, added `--version`. Still silently ignored flags after the subcommand (upstream behaviour). |
-| `v1.3.2-local.3` | fixes flag ordering; supersedes local.1. **Use this one.** |
+| `v1.3.2-local.3` | fixes flag ordering; supersedes local.1. |
+| `v1.3.2-local.4` | receive mode names the device in its own console output. **Use this one.** |
 
 
 

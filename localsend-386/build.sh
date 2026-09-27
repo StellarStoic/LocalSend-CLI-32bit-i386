@@ -14,7 +14,7 @@ set -euo pipefail
 
 SRC="${SRC:-$PWD/localsend-cli}"
 OUT="${OUT:-$PWD/localsend-cli-386}"
-REF="${REF:-main}"
+REF="${REF:-v1.3.2}"
 
 command -v go >/dev/null || {
     echo "Go is required on the BUILD machine (1.22+). The target needs nothing." >&2

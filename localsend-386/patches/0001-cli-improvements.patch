@@ -1,5 +1,5 @@
 diff --git a/main.go b/main.go
-index ebe33ce..2b6e0b6 100644
+index ebe33ce..b110532 100644
 --- a/main.go
 +++ b/main.go
 @@ -9,6 +9,7 @@ import (
@@ -10,7 +10,30 @@ index ebe33ce..2b6e0b6 100644
  	"strings"
  	"syscall"
  
-@@ -106,39 +107,107 @@ func waitForInterrupt(message string) {
+@@ -67,6 +68,22 @@ func ReceiveMode() {
+ 		return
+ 	}
+ 	discovery.ListenAndStartBroadcasts(nil)
++
++	// Print this device's own identity. The alias is what every other device
++	// displays for this machine, so the person sitting at the keyboard should
++	// see it too instead of having to guess or check another device.
++	alias := config.ConfigData.NameOfDevice
++	if alias == "" {
++		alias = "(unnamed - set device_name in the config)"
++	}
++	fp := shared.Message.Fingerprint
++	if len(fp) > 12 {
++		fp = fp[:12] + "…"
++	}
++	logger.Infof("[%s] LocalSend receive mode", alias)
++	logger.Infof("  device name : %s", alias)
++	logger.Infof("  fingerprint : %s", fp)
++	logger.Infof("  port        : %d", config.ConfigData.Port)
+ 	logger.Infof("Waiting to receive files (output: %s)...", config.ConfigData.OutputDir)
+ 	waitForInterrupt("Receive mode stopped.")
+ }
+@@ -106,39 +123,107 @@ func waitForInterrupt(message string) {
  	fmt.Println("\n" + message)
  }
  
@@ -140,7 +163,7 @@ index ebe33ce..2b6e0b6 100644
  			showUsage()
  			ExitMode()
  		}
-@@ -280,10 +349,11 @@ func humanBytes(n int64) string {
+@@ -280,10 +365,11 @@ func humanBytes(n int64) string {
  }
  
  var (
@@ -156,7 +179,7 @@ index ebe33ce..2b6e0b6 100644
  )
  
  func init() {
-@@ -291,6 +361,10 @@ func init() {
+@@ -291,6 +377,10 @@ func init() {
  	flag.StringVar(&outputDir, "output-dir", "", "Directory for received files (overrides config)")
  	flag.StringVar(&deviceName, "device-name", "", "Device alias broadcast over the network (overrides config)")
  	flag.BoolVar(&quickSave, "quick-save", false, "Skip the approval prompt and auto-accept every incoming session (overrides config)")
@@ -167,7 +190,7 @@ index ebe33ce..2b6e0b6 100644
  }
  
  // applyFlagOverrides copies any explicitly-set CLI flags onto the loaded
-@@ -330,8 +404,41 @@ func main() {
+@@ -330,8 +420,41 @@ func main() {
  	// Parse flags up front so config values (port, output dir, device name)
  	// are settled before anything reads them. flagParse() below still runs
  	// for command dispatch (web/send/receive); flag.Parse is idempotent.
