@@ -149,6 +149,24 @@ The released binary is built from upstream `v1.3.2` **plus**
   meant that running it without an argument installed whichever old build happened to be sitting in
   `/tmp` — it silently reinstalled a much older release once. It now defaults to the binary beside the
   script, and prints the installed `--version` so a stale build cannot pass unnoticed.
+* **A long path no longer wraps into two lines.** The panel wraps anything wider than it, and a
+  wrapped line loses its alignment *and* its own colour — a dropped path came out as a white line
+  followed by a green one, which looked like a rendering fault rather than a text box. The box is now
+  a single line that scrolls with the cursor (`…` marks the hidden left-hand side), and the width
+  maths accounts for the panel's border/padding and for the prompt's own left padding, which is what
+  made the first attempt overshoot and wrap anyway. (`TestDashboardSendLineDoesNotWrap`,
+  `TestDashboardInputWindowKeepsTheCursorInView`.)
+* **A send that does not happen no longer closes the window.** There was no loop around the
+  dashboard: one run, one action, then the program ended. So a path that was not on disk — which a
+  drag &amp; drop produces easily, see below — printed `No such file:` and took the window with it,
+  with no recipient picker and nothing sent. The dashboard now loops, so a failed send (missing file,
+  a directory, no device picked, an empty clipboard) puts you back in the menu with the program still
+  running. `SendMode`/`sendText` return errors instead of exiting for exactly this reason; the
+  command-line paths still exit, as a one-shot invocation should.
+* **Dropped and pasted paths are normalised.** A file manager hands over a `file://` URI, some
+  terminals quote the path, and both can carry stray whitespace — each made a perfectly good dropped
+  file look like a missing file. `cleanDroppedPath` strips the URI scheme (percent-decoding it too),
+  the surrounding quotes and the whitespace. (`TestCleanDroppedPath`.)
 
 Apply it yourself with `git apply`, or just build without it — the CLI works either way, minus the
 documented conveniences. Verified to apply cleanly to upstream `main` == `v1.3.2` (`64b192a`).
@@ -163,7 +181,8 @@ Binary history in this repo's releases:
 | `v1.3.2-local.5` | `send-text --clipboard` / `send-text -` (stdin), and a **LocalSend (send clipboard)** menu entry. |
 | `v1.3.2-local.6` | stops the device listing **itself** as a send target. |
 | `v1.3.2-local.7` | the dashboard send box takes **text**, not only file paths — pasting a sentence works. |
-| `v1.3.2-local.8` | the dashboard has a **📋 Send clipboard** menu item and **Ctrl+V**; new **send file** launcher for drag &amp; drop. **Use this one.** |
+| `v1.3.2-local.8` | the dashboard has a **📋 Send clipboard** menu item and **Ctrl+V**; new **send file** launcher for drag &amp; drop. |
+| `v1.3.2-local.9` | long text scrolls on one line instead of wrapping; a failed send returns to the dashboard instead of closing it; dropped `file://`/quoted paths are normalised. **Use this one.** |
 
 
 
