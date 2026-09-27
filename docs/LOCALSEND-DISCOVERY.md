@@ -113,4 +113,4 @@ RSTs, `ss -tan state syn-recv | wc -l` counting its own header, multicast being 
 to `ct mark`, a headless receiver that cannot prompt, `pkill -f` killing the shell that
 runs it, and backgrounded `sudo -S` losing its password to `/dev/null`.
 
-Tracked as [issue #1](https://github.com/StellarStoic/LocalSend-CLI-32bit-i386/issues/1).
+Tracked as [issue #1](https://github.com/StellarStoic/localsend-cli-i386/issues/1).
