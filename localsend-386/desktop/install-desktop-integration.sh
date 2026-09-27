@@ -1,14 +1,20 @@
 #!/bin/bash
 # install-desktop-integration.sh — run as root ON the target.
-# Installs the binary system-wide, adds three menu entries (dashboard, plain receive,
-# and the danger-gated auto-accept receive), and validates everything.
+# Installs the binary system-wide, adds the menu entries (dashboard, plain receive,
+# send clipboard, send file, and the danger-gated auto-accept receive), and validates
+# everything.
 #
-#   sudo bash install-desktop-integration.sh /path/to/localsend-cli-386
+#   sudo bash install-desktop-integration.sh [/path/to/localsend-cli-386]
+#
+# With no argument it uses the binary next to this script. It deliberately does NOT
+# fall back to a shared /tmp path: that silently installed a months-old build once,
+# and only the version read-back below caught it.
 #
 # Idempotent: re-running replaces the binary, wrappers and launchers in place.
 set -euo pipefail
 
-BIN_SRC="${1:-/tmp/localsend-cli-386}"
+HERE=$(cd "$(dirname "$0")" && pwd)
+BIN_SRC="${1:-$HERE/localsend-cli-386}"
 APP_DIR=/usr/local/share/localsend-cli
 BIN=/usr/local/bin/localsend-cli
 MODE=/usr/local/bin/localsend-cli-mode
@@ -16,12 +22,14 @@ ICON_DIR=/usr/share/icons/hicolor/scalable/apps
 APPS_DIR=/usr/share/applications
 
 [ -f "$BIN_SRC" ] || { echo "binary not found: $BIN_SRC" >&2; exit 1; }
-HERE=$(cd "$(dirname "$0")" && pwd)
 
 echo "== binary"
 install -m 0755 "$BIN_SRC" "$BIN"
 file "$BIN" | cut -c1-100
 sha256sum "$BIN"
+# Print what was actually installed, so an old build cannot slip through unnoticed.
+INSTALLED_VERSION=$("$BIN" --version 2>/dev/null | head -1 || true)
+echo "   version: ${INSTALLED_VERSION:-unknown}"
 
 echo
 echo "== wrappers (one script, mode chosen by the name it is called by)"
@@ -29,7 +37,8 @@ install -m 0755 "$HERE/localsend-mode.sh" "$MODE"
 ln -sf "$MODE" /usr/local/bin/localsend-cli-receive
 ln -sf "$MODE" /usr/local/bin/localsend-cli-quicksave
 ln -sf "$MODE" /usr/local/bin/localsend-cli-sendtext
-echo "   $MODE  (+ symlinks localsend-cli-receive, localsend-cli-quicksave)"
+ln -sf "$MODE" /usr/local/bin/localsend-cli-sendfile
+echo "   $MODE  (+ symlinks localsend-cli-receive, -quicksave, -sendtext, -sendfile)"
 install -d "$APP_DIR"
 install -m 0755 "$HERE/localsend-mode.sh" "$APP_DIR/localsend-mode.sh"
 install -m 0755 "$HERE/set-device-name.sh" "$APP_DIR/set-device-name.sh"
@@ -45,7 +54,7 @@ done
 
 echo
 echo "== menu entries"
-for f in localsend-cli.desktop localsend-cli-receive.desktop localsend-cli-quicksave.desktop localsend-cli-sendtext.desktop; do
+for f in localsend-cli.desktop localsend-cli-receive.desktop localsend-cli-quicksave.desktop localsend-cli-sendtext.desktop localsend-cli-sendfile.desktop; do
     install -m 0644 "$HERE/$f" "$APPS_DIR/$f"
     if desktop-file-validate "$APPS_DIR/$f"; then
         echo "   $f: valid"

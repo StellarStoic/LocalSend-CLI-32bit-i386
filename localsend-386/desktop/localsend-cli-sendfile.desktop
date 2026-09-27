@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=LocalSend (send file)
+GenericName=Send a file to another device
+Comment=Drop a file onto this launcher and it goes straight out; you pick the recipient in the terminal
+Exec=localsend-cli-sendfile %F
+TryExec=localsend-cli
+Icon=localsend-cli
+Terminal=true
+Categories=Network;FileTransfer;
+Keywords=localsend;send;file;drop;drag;lan;
+StartupNotify=true

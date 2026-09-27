@@ -5,6 +5,8 @@
 #   localsend-cli-receive      -> plain receive (you approve each sender)
 #   localsend-cli-quicksave    -> auto-accept receive, behind a typed danger gate
 #   localsend-cli-sendtext     -> send text/clipboard (no port needed)
+#   localsend-cli-sendfile <f> -> send a file; drop one onto this launcher and its
+#                                 path arrives as the argument (no port needed)
 #   localsend-cli-mode <mode>  -> explicit mode argument
 #
 # Why a wrapper at all: LocalSend binds port 53317, so a second instance started
@@ -17,13 +19,47 @@ case "$mode" in
     localsend-cli-receive)  mode=receive ;;
     localsend-cli-quicksave) mode=quicksave ;;
     localsend-cli-sendtext) mode=clipboard ;;
+    localsend-cli-sendfile) mode=sendfile ;;
     *) mode="${1:-receive}"; shift || true ;;
 esac
 
 case "$mode" in
-    receive|quicksave|clipboard) ;;
-    *) echo "usage: $(basename "$0") [receive|quicksave|clipboard] [extra localsend-cli args]" >&2; exit 2 ;;
+    receive|quicksave|clipboard|sendfile) ;;
+    *) echo "usage: $(basename "$0") [receive|quicksave|clipboard|sendfile <file>] [extra localsend-cli args]" >&2; exit 2 ;;
 esac
+
+# ---- send a file (drag & drop) ---------------------------------------------------
+# Dropping a file onto a launcher hands this script its path, so a file can go out
+# without going through the dashboard's box. Also handled before the port
+# pre-flight, for the same reason as the clipboard: sending never binds 53317.
+if [ "$mode" = "sendfile" ]; then
+    file="${1:-}"
+    if [ -z "$file" ]; then
+        echo
+        echo "  No file given. Drop a file onto this launcher, or run:"
+        echo "    $(basename "$0") /path/to/file"
+        echo
+        [ -t 0 ] && { printf "  Press Enter to close. "; read -r _ || true; }
+        exit 1
+    fi
+    if [ ! -e "$file" ]; then
+        echo
+        echo "  No such file: $file"
+        echo
+        [ -t 0 ] && { printf "  Press Enter to close. "; read -r _ || true; }
+        exit 1
+    fi
+    if [ -d "$file" ]; then
+        echo
+        echo "  That is a directory, and LocalSend sends files: $file"
+        echo "  (tar it up first if you meant to send a folder)"
+        echo
+        [ -t 0 ] && { printf "  Press Enter to close. "; read -r _ || true; }
+        exit 1
+    fi
+    echo "  Sending: $file"
+    exec localsend-cli send "$file"
+fi
 
 # ---- clipboard / text send ------------------------------------------------------
 # Handled before the port pre-flight: sending never binds 53317, so a running

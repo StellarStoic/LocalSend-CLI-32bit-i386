@@ -135,6 +135,20 @@ The released binary is built from upstream `v1.3.2` **plus**
   sends what it is given as a message when it is not a file on disk; a mistyped *path* is still
   reported as a missing file rather than quietly sent as prose.
   (`TestDashboardSendBoxAcceptsPastedText` covers it.)
+* **The dashboard can send the clipboard, visibly.** Accepting pasted text is not the same as offering
+  a clipboard option, and the menu had none — so the choice now exists where you would look for it:
+  a **📋 Send clipboard** item opens the send box already filled from the clipboard (visible and
+  editable before anything goes out), and **Ctrl+V** does the same from inside the box, for terminals
+  that bind no paste key. The prompt reads `📝 Path or text:` instead of `📦 File path:`.
+  (`TestDashboardSendClipboardIsARealMenuItem`, `…OpensTheSendBox`, `…SetValueFillsTheBox`.)
+* **`localsend-cli-sendfile <file>` + a `LocalSend (send file)` launcher for drag &amp; drop.** Dropping a
+  file onto a launcher or panel button passes its path as an argument; this sends it directly, and
+  complains usefully for a missing path or a directory. Sending never binds 53317, so a receiver being
+  open does not block it.
+* **The desktop installer no longer has a `/tmp` default.** `BIN_SRC="${1:-/tmp/localsend-cli-386}`
+  meant that running it without an argument installed whichever old build happened to be sitting in
+  `/tmp` — it silently reinstalled a much older release once. It now defaults to the binary beside the
+  script, and prints the installed `--version` so a stale build cannot pass unnoticed.
 
 Apply it yourself with `git apply`, or just build without it — the CLI works either way, minus the
 documented conveniences. Verified to apply cleanly to upstream `main` == `v1.3.2` (`64b192a`).
@@ -148,7 +162,8 @@ Binary history in this repo's releases:
 | `v1.3.2-local.4` | receive mode names the device in its own console output. |
 | `v1.3.2-local.5` | `send-text --clipboard` / `send-text -` (stdin), and a **LocalSend (send clipboard)** menu entry. |
 | `v1.3.2-local.6` | stops the device listing **itself** as a send target. |
-| `v1.3.2-local.7` | the dashboard send box takes **text**, not only file paths — pasting a sentence works. **Use this one.** |
+| `v1.3.2-local.7` | the dashboard send box takes **text**, not only file paths — pasting a sentence works. |
+| `v1.3.2-local.8` | the dashboard has a **📋 Send clipboard** menu item and **Ctrl+V**; new **send file** launcher for drag &amp; drop. **Use this one.** |
 
 
 

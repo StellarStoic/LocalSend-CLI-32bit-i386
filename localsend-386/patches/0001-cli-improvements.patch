@@ -81,10 +81,40 @@ index 9300795..0c38a0b 100644
  
  		logger.Debugf("Parsed message from %s: %+v", remoteAddr.IP.String(), message)
 diff --git a/internal/tui/dashboard.go b/internal/tui/dashboard.go
-index 07172ba..d790841 100644
+index 07172ba..5aa1bd6 100644
 --- a/internal/tui/dashboard.go
 +++ b/internal/tui/dashboard.go
-@@ -79,7 +79,7 @@ type dashboardTextInputModel struct {
+@@ -12,6 +12,7 @@ import (
+ 	"github.com/tingkai-c/localsend-cli/internal/approval"
+ 	"github.com/tingkai-c/localsend-cli/internal/history"
+ 	"github.com/tingkai-c/localsend-cli/internal/trust"
++	"github.com/tingkai-c/localsend-cli/internal/utils/clipboard"
+ 	"github.com/tingkai-c/localsend-cli/internal/utils/logger"
+ )
+ 
+@@ -21,13 +22,14 @@ import (
+ type MainAction string
+ 
+ const (
+-	MainActionNone     MainAction = "none"
+-	MainActionExit     MainAction = "exit"
+-	MainActionSend     MainAction = "send"
+-	MainActionWeb      MainAction = "web"
+-	MainActionHistory  MainAction = "history"
+-	MainActionTrusted  MainAction = "trusted"
+-	MainActionSettings MainAction = "settings"
++	MainActionNone          MainAction = "none"
++	MainActionExit          MainAction = "exit"
++	MainActionSend          MainAction = "send"
++	MainActionSendClipboard MainAction = "send-clipboard"
++	MainActionWeb           MainAction = "web"
++	MainActionHistory       MainAction = "history"
++	MainActionTrusted       MainAction = "trusted"
++	MainActionSettings      MainAction = "settings"
+ )
+ 
+ // MainResult is returned when the main dashboard exits.
+@@ -79,7 +81,7 @@ type dashboardTextInputModel struct {
  }
  
  func initialDashboardTextInputModel() dashboardTextInputModel {
@@ -93,7 +123,7 @@ index 07172ba..d790841 100644
  }
  
  func (m dashboardTextInputModel) Init() bubbletea.Cmd { return nil }
-@@ -142,19 +142,36 @@ func (m dashboardTextInputModel) Update(msg bubbletea.Msg) (dashboardTextInputMo
+@@ -142,19 +144,36 @@ func (m dashboardTextInputModel) Update(msg bubbletea.Msg) (dashboardTextInputMo
  		case "enter":
  			m.done = true
  		default:
@@ -137,11 +167,89 @@ index 07172ba..d790841 100644
  }
  
  func (m dashboardTextInputModel) View() string {
+@@ -171,6 +190,13 @@ func (m dashboardTextInputModel) View() string {
+ 
+ func (m dashboardTextInputModel) Value() string { return m.value }
+ 
++// setValue replaces the box contents, leaving the cursor at the end. Used when
++// the clipboard is read into the box.
++func (m *dashboardTextInputModel) setValue(value string) {
++	m.value = value
++	m.cursor = len(value)
++}
++
+ type dashboardView string
+ 
+ const (
+@@ -208,6 +234,7 @@ func newDashboardModel(deps MainDeps) dashboardModel {
+ 		view: dashboardViewMenu,
+ 		items: []dashboardMenuItem{
+ 			{label: "🚀 Send", action: MainActionSend},
++			{label: "📋 Send clipboard", action: MainActionSendClipboard},
+ 			{label: "🌐 Web Portal", action: MainActionWeb},
+ 			{label: "🕘 Activity", action: MainActionHistory},
+ 			{label: "🛡️ Trusted", action: MainActionTrusted},
+@@ -401,6 +428,19 @@ func (m dashboardModel) updateKey(msg bubbletea.KeyMsg) (bubbletea.Model, bubble
+ 			m.textInput = initialDashboardTextInputModel()
+ 			m.suggestions = nil
+ 			return m, nil
++		case "ctrl+v":
++			// Ctrl+Shift+V is the terminal's own paste and lands in the box on
++			// its own; Ctrl+V is ours, so reading the clipboard works even
++			// where the terminal binds no paste key.
++			if text, err := clipboard.ReadFromClipboard(); err == nil {
++				if trimmed := strings.TrimSpace(sanitizeInput(text)); trimmed != "" {
++					m.textInput.setValue(trimmed)
++				}
++			} else {
++				logger.Warnf("Could not read the clipboard: %v", err)
++			}
++			m.suggestions = pathSuggestions(m.textInput.value)
++			return m, nil
+ 		}
+ 		m.textInput, _ = m.textInput.Update(msg)
+ 		if m.textInput.done {
+@@ -530,6 +570,22 @@ func (m dashboardModel) activateCurrentItem() (bubbletea.Model, bubbletea.Cmd) {
+ 		m.textInput = initialDashboardTextInputModel()
+ 		m.suggestions = nil
+ 		return m, nil
++	case MainActionSendClipboard:
++		// Same box, pre-filled from the clipboard: the point is that the text
++		// is visible and editable before it goes anywhere, and that sending
++		// text is a thing you can *see* you can do rather than something you
++		// have to know about.
++		m.view = dashboardViewSend
++		m.textInput = initialDashboardTextInputModel()
++		m.suggestions = nil
++		if text, err := clipboard.ReadFromClipboard(); err == nil {
++			if trimmed := strings.TrimSpace(sanitizeInput(text)); trimmed != "" {
++				m.textInput.setValue(trimmed)
++			}
++		} else {
++			logger.Warnf("Could not read the clipboard: %v", err)
++		}
++		return m, nil
+ 	case MainActionHistory:
+ 		m.view = dashboardViewHistory
+ 		return m, nil
+@@ -701,10 +757,10 @@ func (m dashboardModel) renderMenu(s *strings.Builder) {
+ }
+ 
+ func (m dashboardModel) renderSend(s *strings.Builder) {
+-	s.WriteString(dashInputPromptStyle.Render("📦 File path: "))
++	s.WriteString(dashInputPromptStyle.Render("📝 Path or text: "))
+ 	s.WriteString(dashInputStyle.Render(m.textInput.View()))
+ 	s.WriteString("\n")
+-	s.WriteString(dashMenuStyle.Render("Tab: complete path • Esc: back • Ctrl+C: quit"))
++	s.WriteString(dashMenuStyle.Render("Ctrl+V: paste clipboard • Enter: send • Tab: complete path • Esc: back"))
+ }
+ 
+ func (m dashboardModel) renderHistory(s *strings.Builder) {
 diff --git a/internal/tui/dashboard_test.go b/internal/tui/dashboard_test.go
-index 7ccb93b..4d373a5 100644
+index 7ccb93b..cd9b043 100644
 --- a/internal/tui/dashboard_test.go
 +++ b/internal/tui/dashboard_test.go
-@@ -107,6 +107,35 @@ func TestMainDashboardSendPromptResult(t *testing.T) {
+@@ -107,6 +107,79 @@ func TestMainDashboardSendPromptResult(t *testing.T) {
  	}
  }
  
@@ -171,6 +279,50 @@ index 7ccb93b..4d373a5 100644
 +	m, _ = m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEscape})
 +	if m.Value() != before {
 +		t.Fatalf("escape key modified the value: %q -> %q", before, m.Value())
++	}
++}
++
++func TestDashboardSendClipboardIsARealMenuItem(t *testing.T) {
++	m := newDashboardModel(MainDeps{})
++	found := false
++	for _, item := range m.items {
++		if item.action == MainActionSendClipboard {
++			found = true
++		}
++	}
++	if !found {
++		t.Fatalf("the dashboard offers no clipboard option: %+v", m.items)
++	}
++}
++
++func TestDashboardSendClipboardOpensTheSendBox(t *testing.T) {
++	m := newDashboardModel(MainDeps{})
++	for i, item := range m.items {
++		if item.action == MainActionSendClipboard {
++			m.cursor = i
++		}
++	}
++	// The clipboard itself may be unreachable in a headless test; navigating to
++	// the box must work regardless, that is the part the user asked for.
++	updated, _ := m.activateCurrentItem()
++	got, ok := updated.(dashboardModel)
++	if !ok {
++		t.Fatalf("unexpected model type %T", updated)
++	}
++	if got.view != dashboardViewSend {
++		t.Fatalf("view = %q, want %q", got.view, dashboardViewSend)
++	}
++}
++
++func TestDashboardSendBoxSetValueFillsTheBox(t *testing.T) {
++	m := initialDashboardTextInputModel()
++	const text = "pasted from the clipboard"
++	m.setValue(text)
++	if got := m.Value(); got != text {
++		t.Fatalf("value = %q, want %q", got, text)
++	}
++	if m.cursor != len(text) {
++		t.Fatalf("cursor = %d, want %d (end of the text)", m.cursor, len(text))
 +	}
 +}
 +
