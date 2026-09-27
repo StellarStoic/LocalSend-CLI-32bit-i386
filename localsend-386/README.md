@@ -117,6 +117,13 @@ The released binary is built from upstream `v1.3.2` **plus**
   Without it you have to check another device to learn what this one calls itself — and since an
   unset `device_name` makes the CLI invent a new name on every launch, that name is not even
   guessable.
+* **Text can be sent from the clipboard or a pipe.** `send-text --clipboard` reads the system
+  clipboard and `send-text -` reads stdin (`xclip -o | … send-text -`), so text no longer has to be
+  pasted into a file first. The installer adds a **LocalSend (send clipboard)** entry that shows the
+  text, offers to edit it, then hands off to the recipient picker. Two supporting fixes came with it:
+  a lone `-` is no longer hoisted as a flag by the argv reordering, and the wrapper's port
+  pre-flight no longer blocks sending (sending never binds 53317, so a running receiver must not
+  stop you from sending).
 
 Apply it yourself with `git apply`, or just build without it — the CLI works either way, minus the
 documented conveniences. Verified to apply cleanly to upstream `main` == `v1.3.2` (`64b192a`).
@@ -127,7 +134,8 @@ Binary history in this repo's releases:
 |---|---|
 | `v1.3.2-local.1` | richer `--help`, added `--version`. Still silently ignored flags after the subcommand (upstream behaviour). |
 | `v1.3.2-local.3` | fixes flag ordering; supersedes local.1. |
-| `v1.3.2-local.4` | receive mode names the device in its own console output. **Use this one.** |
+| `v1.3.2-local.4` | receive mode names the device in its own console output. |
+| `v1.3.2-local.5` | `send-text --clipboard` / `send-text -` (stdin), and a **LocalSend (send clipboard)** menu entry. **Use this one.** |
 
 
 

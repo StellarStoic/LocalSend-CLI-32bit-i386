@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=LocalSend (send clipboard)
+GenericName=Send clipboard text to another device
+Comment=Send the clipboard contents as a message; you pick the recipient in the terminal
+Exec=localsend-cli-sendtext
+TryExec=localsend-cli
+Icon=localsend-cli
+Terminal=true
+Categories=Network;FileTransfer;
+Keywords=localsend;send;clipboard;text;message;lan;
+StartupNotify=true

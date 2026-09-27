@@ -28,6 +28,7 @@ echo "== wrappers (one script, mode chosen by the name it is called by)"
 install -m 0755 "$HERE/localsend-mode.sh" "$MODE"
 ln -sf "$MODE" /usr/local/bin/localsend-cli-receive
 ln -sf "$MODE" /usr/local/bin/localsend-cli-quicksave
+ln -sf "$MODE" /usr/local/bin/localsend-cli-sendtext
 echo "   $MODE  (+ symlinks localsend-cli-receive, localsend-cli-quicksave)"
 install -d "$APP_DIR"
 install -m 0755 "$HERE/localsend-mode.sh" "$APP_DIR/localsend-mode.sh"
@@ -44,7 +45,7 @@ done
 
 echo
 echo "== menu entries"
-for f in localsend-cli.desktop localsend-cli-receive.desktop localsend-cli-quicksave.desktop; do
+for f in localsend-cli.desktop localsend-cli-receive.desktop localsend-cli-quicksave.desktop localsend-cli-sendtext.desktop; do
     install -m 0644 "$HERE/$f" "$APPS_DIR/$f"
     if desktop-file-validate "$APPS_DIR/$f"; then
         echo "   $f: valid"

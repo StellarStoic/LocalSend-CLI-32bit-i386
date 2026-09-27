@@ -1,8 +1,29 @@
+diff --git a/internal/utils/clipboard/clipboard.go b/internal/utils/clipboard/clipboard.go
+index 962d275..bf338d6 100644
+--- a/internal/utils/clipboard/clipboard.go
++++ b/internal/utils/clipboard/clipboard.go
+@@ -13,3 +13,10 @@ func WriteToClipBoard(text string) {
+ 		logger.Success("Text copied to clipboard!")
+ 	}
+ }
++
++// ReadFromClipboard returns whatever text is currently on the system clipboard.
++// Used by `send-text --clipboard`, so text received from a peer can be forwarded
++// on to another device without ever touching a file.
++func ReadFromClipboard() (string, error) {
++	return clipboard.ReadAll()
++}
 diff --git a/main.go b/main.go
-index ebe33ce..b110532 100644
+index ebe33ce..b35d443 100644
 --- a/main.go
 +++ b/main.go
-@@ -9,6 +9,7 @@ import (
+@@ -4,11 +4,13 @@ import (
+ 	"crypto/tls"
+ 	"flag"
+ 	"fmt"
++	"io"
+ 	"log"
+ 	"net/http"
  	"os"
  	"os/signal"
  	"path/filepath"
@@ -10,7 +31,15 @@ index ebe33ce..b110532 100644
  	"strings"
  	"syscall"
  
-@@ -67,6 +68,22 @@ func ReceiveMode() {
+@@ -23,6 +25,7 @@ import (
+ 	"github.com/tingkai-c/localsend-cli/internal/trust"
+ 	"github.com/tingkai-c/localsend-cli/internal/tui"
+ 	"github.com/tingkai-c/localsend-cli/internal/utils/cert"
++	"github.com/tingkai-c/localsend-cli/internal/utils/clipboard"
+ 	"github.com/tingkai-c/localsend-cli/internal/utils/logger"
+ 	"github.com/tingkai-c/localsend-cli/static"
+ )
+@@ -67,6 +70,22 @@ func ReceiveMode() {
  		return
  	}
  	discovery.ListenAndStartBroadcasts(nil)
@@ -33,7 +62,39 @@ index ebe33ce..b110532 100644
  	logger.Infof("Waiting to receive files (output: %s)...", config.ConfigData.OutputDir)
  	waitForInterrupt("Receive mode stopped.")
  }
-@@ -106,39 +123,107 @@ func waitForInterrupt(message string) {
+@@ -79,6 +98,31 @@ func SendMode(filePath string) {
+ }
+ 
+ func SendTextMode(message string) {
++	// Two conveniences, so text never has to be retyped or saved to a file first:
++	//   send-text --clipboard   take the message from the system clipboard
++	//   send-text -             take it from stdin (xclip -o | ... send-text -)
++	switch {
++	case sendClipboard:
++		text, err := clipboard.ReadFromClipboard()
++		if err != nil {
++			logger.Errorf("Could not read the clipboard: %v", err)
++			logger.Info("With no display attached, pass the text inline or pipe it: send-text -")
++			ExitMode()
++		}
++		message = text
++	case message == "-":
++		data, err := io.ReadAll(os.Stdin)
++		if err != nil {
++			logger.Errorf("Could not read stdin: %v", err)
++			ExitMode()
++		}
++		message = strings.TrimRight(string(data), "\n")
++	}
++	if strings.TrimSpace(message) == "" {
++		logger.Error("Nothing to send: the text is empty (clipboard empty? pass it inline instead)")
++		ExitMode()
++	}
++
+ 	dir, err := os.MkdirTemp("", "localsend-cli-text-*")
+ 	if err != nil {
+ 		logger.Errorf("Failed to create temporary text payload: %v", err)
+@@ -106,39 +150,111 @@ func waitForInterrupt(message string) {
  	fmt.Println("\n" + message)
  }
  
@@ -69,6 +130,8 @@ index ebe33ce..b110532 100644
 +	fmt.Println("  send <path> [more paths]  Send file(s) or folder(s); choose recipients in the TUI")
 +	fmt.Println("                            (Space toggles multi-select, Enter sends)")
 +	fmt.Println("  send-text <message>       Send text; the peer receives it as a .txt file")
++	fmt.Println("  send-text --clipboard     Send whatever is on the clipboard right now")
++	fmt.Println("  send-text -               Send stdin, e.g. xclip -o | ... send-text -")
 +	fmt.Println("  receive                   Receive files (approval prompt unless trusted/quick-save)")
 +	fmt.Println("  web                       Web mode: others on the LAN fetch from a browser")
  	fmt.Println("  trusted                   List trusted senders")
@@ -125,6 +188,8 @@ index ebe33ce..b110532 100644
 +	fmt.Println()
 +	fmt.Println("  # send a snippet of text")
 +	fmt.Println("  localsend-cli send-text \"meeting at 18:00 in the kitchen\"")
++	fmt.Println("  localsend-cli send-text --clipboard          # clipboard -> another device")
++	fmt.Println("  xclip -o | localsend-cli send-text -         # or via a pipe")
 +	fmt.Println()
 +	fmt.Println("  # browser mode: peers open http://<this-machine-ip>:53317/ and download")
 +	fmt.Println("  localsend-cli web")
@@ -163,7 +228,18 @@ index ebe33ce..b110532 100644
  			showUsage()
  			ExitMode()
  		}
-@@ -280,10 +365,11 @@ func humanBytes(n int64) string {
+@@ -166,8 +282,8 @@ func flagParse(httpServer *http.ServeMux, port int, flagOpen *bool) {
+ 	case "receive":
+ 		ReceiveMode()
+ 	case "send-text":
+-		if len(args) < 2 {
+-			logger.Error("Need text message")
++		if len(args) < 2 && !sendClipboard {
++			logger.Error("Need text message (or pass --clipboard, or pipe the text and use -)")
+ 			ExitMode()
+ 		}
+ 		SendTextMode(strings.Join(args[1:], " "))
+@@ -280,10 +396,16 @@ func humanBytes(n int64) string {
  }
  
  var (
@@ -176,10 +252,15 @@ index ebe33ce..b110532 100644
 +	deviceName  string
 +	quickSave   bool
 +	showVersion bool
++
++	// send-text --clipboard: send whatever is on the clipboard instead of an
++	// inline message (the flag is declared so the argv reordering hoists it
++	// correctly instead of flag.Parse rejecting it as undefined).
++	sendClipboard bool
  )
  
  func init() {
-@@ -291,6 +377,10 @@ func init() {
+@@ -291,6 +413,11 @@ func init() {
  	flag.StringVar(&outputDir, "output-dir", "", "Directory for received files (overrides config)")
  	flag.StringVar(&deviceName, "device-name", "", "Device alias broadcast over the network (overrides config)")
  	flag.BoolVar(&quickSave, "quick-save", false, "Skip the approval prompt and auto-accept every incoming session (overrides config)")
@@ -187,10 +268,11 @@ index ebe33ce..b110532 100644
 +	// the command line without tripping "flag provided but not defined".
 +	flag.BoolVar(&showVersion, "version", false, "Show version and build target, then exit")
 +	flag.BoolVar(&showVersion, "V", false, "Show version and build target, then exit (short form)")
++	flag.BoolVar(&sendClipboard, "clipboard", false, "With send-text: send the current clipboard contents")
  }
  
  // applyFlagOverrides copies any explicitly-set CLI flags onto the loaded
-@@ -330,8 +420,41 @@ func main() {
+@@ -330,8 +457,42 @@ func main() {
  	// Parse flags up front so config values (port, output dir, device name)
  	// are settled before anything reads them. flagParse() below still runs
  	// for command dispatch (web/send/receive); flag.Parse is idempotent.
@@ -210,7 +292,8 @@ index ebe33ce..b110532 100644
 +		argv := os.Args[1:]
 +		for i := 0; i < len(argv); i++ {
 +			a := argv[i]
-+			if strings.HasPrefix(a, "-") {
++			// A lone "-" means "read stdin", not a flag - keep it positional.
++			if strings.HasPrefix(a, "-") && a != "-" {
 +				flags = append(flags, a)
 +				if valueFlags[a] && i+1 < len(argv) && !strings.Contains(a, "=") {
 +					flags = append(flags, argv[i+1])
@@ -232,3 +315,14 @@ index ebe33ce..b110532 100644
  	applyFlagOverrides()
  
  	// Lightweight subcommands that only touch the trust file should exit
+@@ -339,8 +500,8 @@ func main() {
+ 	if args := flag.Args(); len(args) > 0 {
+ 		switch args[0] {
+ 		case "send-text":
+-			if len(args) < 2 {
+-				logger.Error("Need text message")
++			if len(args) < 2 && !sendClipboard {
++				logger.Error("Need text message (or pass --clipboard, or pipe the text and use -)")
+ 				ExitMode()
+ 			}
+ 			SendTextMode(strings.Join(args[1:], " "))

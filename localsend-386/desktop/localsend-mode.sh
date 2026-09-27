@@ -1,9 +1,10 @@
 #!/bin/bash
 # localsend-mode.sh — one wrapper for the non-dashboard menu entries.
 #
-# Install it three ways and the mode follows the name it is called by:
+# Install it four ways and the mode follows the name it is called by:
 #   localsend-cli-receive      -> plain receive (you approve each sender)
 #   localsend-cli-quicksave    -> auto-accept receive, behind a typed danger gate
+#   localsend-cli-sendtext     -> send text/clipboard (no port needed)
 #   localsend-cli-mode <mode>  -> explicit mode argument
 #
 # Why a wrapper at all: LocalSend binds port 53317, so a second instance started
@@ -15,13 +16,55 @@ mode=$(basename "$0")
 case "$mode" in
     localsend-cli-receive)  mode=receive ;;
     localsend-cli-quicksave) mode=quicksave ;;
+    localsend-cli-sendtext) mode=clipboard ;;
     *) mode="${1:-receive}"; shift || true ;;
 esac
 
 case "$mode" in
-    receive|quicksave) ;;
-    *) echo "usage: $(basename "$0") [receive|quicksave] [extra localsend-cli args]" >&2; exit 2 ;;
+    receive|quicksave|clipboard) ;;
+    *) echo "usage: $(basename "$0") [receive|quicksave|clipboard] [extra localsend-cli args]" >&2; exit 2 ;;
 esac
+
+# ---- clipboard / text send ------------------------------------------------------
+# Handled before the port pre-flight: sending never binds 53317, so a running
+# receiver must not block it.
+if [ "$mode" = "clipboard" ]; then
+    text=""
+    if command -v xclip >/dev/null 2>&1; then
+        text=$(xclip -selection clipboard -o 2>/dev/null || true)
+    fi
+    if [ -z "$text" ] && [ -n "${DISPLAY:-}" ] && command -v zenity >/dev/null 2>&1; then
+        text=$(zenity --entry --width=520 \
+            --title="LocalSend — send text" \
+            --text="The clipboard is empty. Type or paste the text to send:" 2>/dev/null || true)
+    fi
+    if [ -z "$text" ]; then
+        echo
+        echo "  Nothing to send: the clipboard is empty and no text was entered."
+        echo "  Copy some text first, or send inline:  localsend-cli send-text \"hello\""
+        echo
+        [ -t 0 ] && { printf "  Press Enter to close. "; read -r _ || true; }
+        exit 1
+    fi
+    printf '\n  Text to send (%s characters):\n\n' "${#text}"
+    printf '%s\n\n' "$text" | sed 's/^/    /'
+    printf '  Send this?  [Y]es / [e]dit in editor / [n]o: '
+    read -r ans || ans=n
+    case "$ans" in
+        e|E)
+            tmp=$(mktemp)
+            printf '%s\n' "$text" > "$tmp"
+            "${EDITOR:-nano}" "$tmp"
+            text=$(cat "$tmp")
+            rm -f "$tmp"
+            [ -z "$text" ] && { echo "  Empty after editing — nothing sent."; exit 1; }
+            ;;
+        n|N) echo "  Nothing sent."; exit 0 ;;
+    esac
+    # Recipient selection happens in the CLI's own picker.
+    exec localsend-cli send-text "$text"
+fi
+# --------------------------------------------------------------------------------
 
 OUT="${LOCALSEND_OUTPUT_DIR:-$HOME/Downloads/localsend-cli}"
 
